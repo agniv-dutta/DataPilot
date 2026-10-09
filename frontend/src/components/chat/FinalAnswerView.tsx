@@ -1,7 +1,8 @@
 import type { FinalAnswer } from '../../api/types'
-import { ChartRenderer } from '../charts/ChartRenderer'
+import { LazyChartRenderer } from '../charts/LazyChartRenderer'
 import { CodeBlock } from '../ui/CodeBlock'
 import { Tabs } from '../ui/Tabs'
+import { SparkIcon } from '../ui/icons'
 import { AnomalyList } from './AnomalyList'
 import { Markdown } from './Markdown'
 import { ResultTable } from './ResultTable'
@@ -13,19 +14,18 @@ export function FinalAnswerView({
   final: FinalAnswer
   onSuggestion?: (q: string) => void
 }) {
-  const hasCode = Boolean(final.sql || final.pandas_code)
   const hasReasoning = final.reasoning.length > 0
-  const hasParts = hasCode || hasReasoning || final.charts.length || final.tables.length
+  const hasParts = Boolean(final.sql) || Boolean(final.pandas_code) || hasReasoning
 
   return (
     <div className="space-y-3">
       <Markdown content={final.answer} />
 
       {final.insights.length > 0 && (
-        <ul className="space-y-1 rounded-input border border-primary-100 bg-primary-50/50 p-3 text-xs text-primary-800">
+        <ul className="space-y-1.5 rounded-input border border-iris/20 bg-iris-soft p-3 text-xs text-ink/90">
           {final.insights.map((insight, i) => (
-            <li key={i} className="flex gap-1.5">
-              <span aria-hidden>✦</span>
+            <li key={i} className="flex gap-2">
+              <SparkIcon size={13} className="mt-0.5 shrink-0 text-orchid" />
               <span>{insight}</span>
             </li>
           ))}
@@ -33,7 +33,7 @@ export function FinalAnswerView({
       )}
 
       {final.charts.map((chart, i) => (
-        <ChartRenderer key={`chart-${i}`} spec={chart} />
+        <LazyChartRenderer key={`chart-${i}`} spec={chart} />
       ))}
 
       {final.tables.map((table, i) => (
@@ -68,7 +68,7 @@ export function FinalAnswerView({
                       <ol className="list-decimal space-y-1.5 pl-4 text-xs text-muted">
                         {final.reasoning.map((step, i) => (
                           <li key={i}>
-                            <span className="font-medium text-navy">Step {i + 1}.</span> {step}
+                            <span className="font-medium text-ink">Step {i + 1}.</span> {step}
                           </li>
                         ))}
                       </ol>
@@ -86,7 +86,7 @@ export function FinalAnswerView({
             <button
               key={q}
               onClick={() => onSuggestion(q)}
-              className="rounded-full border border-primary/30 bg-surface px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary-50"
+              className="rounded-pill border border-iris/25 bg-surface px-3 py-1 text-xs font-medium text-iris-active transition-colors hover:border-iris/50 hover:bg-iris-soft"
             >
               {q}
             </button>

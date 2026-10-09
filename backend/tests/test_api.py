@@ -55,8 +55,8 @@ def test_cors_allows_configured_origin(client: TestClient) -> None:
     resp = client.options(
         "/api/health",
         headers={
-            "Origin": "http://localhost:3000",
+            "Origin": "http://localhost:5173",
             "Access-Control-Request-Method": "GET",
         },
     )
-    assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:5173"

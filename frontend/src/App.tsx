@@ -4,13 +4,17 @@ import type { DatasetInfo } from './api/types'
 import { uploadFiles } from './api/datasets'
 import { useToast } from './hooks/useToast'
 import { ToastProvider } from './components/ui/Toast'
+import { TooltipProvider } from './components/ui/Tooltip'
 import { Sidebar } from './components/layout/Sidebar'
 import { Inspector } from './components/layout/Inspector'
 import { ChatArea } from './components/layout/ChatArea'
+import { TopBar } from './components/layout/TopBar'
 import { PreviewModal } from './components/datasets/PreviewModal'
 import { Styleguide } from './pages/Styleguide'
+import { Landing } from './pages/Landing'
 import { useDatasets } from './hooks/useDatasets'
 import { useSession } from './hooks/useSession'
+import { usePathname } from './lib/router'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,50 +22,11 @@ const queryClient = new QueryClient({
   },
 })
 
-function TopBar({
-  onMenu,
-  onInspector,
-  sessionLabel,
-}: {
-  onMenu: () => void
-  onInspector: () => void
-  sessionLabel: string
-}) {
-  return (
-    <header className="flex h-12 items-center justify-between border-b border-borderline bg-surface px-3 sm:px-4 lg:hidden">
-      <button
-        onClick={onMenu}
-        aria-label="Open datasets"
-        className="rounded-input p-1.5 text-muted hover:bg-primary-50 hover:text-primary"
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      </button>
-      <span className="truncate text-xs font-semibold text-muted">{sessionLabel}</span>
-      <button
-        onClick={onInspector}
-        aria-label="Open inspector"
-        className="rounded-input p-1.5 text-muted hover:bg-primary-50 hover:text-primary"
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path
-            d="M9 3v2m6-2v2m-9 4h12M4 21V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-      </button>
-    </header>
-  )
-}
-
-function AppInner() {
+function Workspace() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [preview, setPreview] = useState<DatasetInfo | null>(null)
-  const { sessionId, creating, start, clear } = useSession()
+  const { sessionId, creating, reset } = useSession()
   const { datasets, list, remove } = useDatasets(sessionId)
   const { show } = useToast()
 
@@ -77,42 +42,52 @@ function AppInner() {
         show({ tone: 'success', title: `Loaded ${name}` })
       }
     } catch (err) {
-      show({ tone: 'error', title: 'Could not load sample', description: err instanceof Error ? err.message : undefined })
+      show({
+        tone: 'error',
+        title: 'Could not load sample',
+        description: err instanceof Error ? err.message : undefined,
+      })
     }
   }
 
-  const startNewSession = () => {
-    clear()
-    void start()
-  }
-
-  const sessionLabel = sessionId ? `Session ${sessionId.slice(0, 8)}…` : 'No session'
+  const sessionLabel = sessionId
+    ? `Session ${sessionId.slice(0, 8)}`
+    : creating
+      ? 'Starting session…'
+      : 'No session'
 
   return (
-    <div className="flex h-screen overflow-hidden bg-app text-navy">
-      <Sidebar
-        visible={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        sessionId={sessionId}
-        creating={creating}
-        onStartSession={startNewSession}
-        onClearSession={startNewSession}
-        datasets={datasets}
-        loading={list.isLoading}
-        onPreview={(d) => setPreview(d)}
-        onRemove={(d) => remove.mutate(d.file_id)}
-        onUploaded={() => undefined}
-        onSample={loadSample}
-      />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar
-          onMenu={() => setSidebarOpen(true)}
-          onInspector={() => setInspectorOpen(true)}
-          sessionLabel={sessionLabel}
+    <div className="h-screen bg-canvas lg:p-3">
+      <div className="grain relative flex h-full overflow-hidden border-line bg-surface lg:rounded-frame lg:border lg:shadow-lift">
+        <Sidebar
+          visible={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          sessionId={sessionId}
+          creating={creating}
+          onNewSession={reset}
+          datasets={datasets}
+          loading={list.isLoading}
+          onPreview={(d) => setPreview(d)}
+          onRemove={(d) => remove.mutate(d.file_id)}
+          onUploaded={() => undefined}
+          onSample={loadSample}
         />
-        <div className="flex min-h-0 flex-1">
-          <ChatArea key={sessionId ?? 'empty'} sessionId={sessionId} />
-          <Inspector sessionId={sessionId} open={inspectorOpen} onClose={() => setInspectorOpen(false)} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <TopBar
+            sessionLabel={sessionLabel}
+            onMenu={() => setSidebarOpen(true)}
+            onInspector={() => setInspectorOpen(true)}
+            onNewSession={reset}
+            creating={creating}
+          />
+          <div className="flex min-h-0 flex-1">
+            <ChatArea key={sessionId ?? 'booting'} sessionId={sessionId} />
+            <Inspector
+              sessionId={sessionId}
+              open={inspectorOpen}
+              onClose={() => setInspectorOpen(false)}
+            />
+          </div>
         </div>
       </div>
       <PreviewModal dataset={preview} onClose={() => setPreview(null)} />
@@ -120,16 +95,22 @@ function AppInner() {
   )
 }
 
+function Router() {
+  const path = usePathname()
+  const hash = typeof window !== 'undefined' ? window.location.hash : ''
+  if (path.startsWith('/styleguide') || hash.startsWith('#/styleguide')) return <Styleguide />
+  if (path === '/' || path === '') return <Landing />
+  return <Workspace />
+}
+
 export function App() {
   return (
     <ToastProvider>
-      <QueryClientProvider client={queryClient}>
-        {window.location.hash.startsWith('#/styleguide') ? (
-          <Styleguide />
-        ) : (
-          <AppInner />
-        )}
-      </QueryClientProvider>
+      <TooltipProvider>
+        <QueryClientProvider client={queryClient}>
+          <Router />
+        </QueryClientProvider>
+      </TooltipProvider>
     </ToastProvider>
   )
 }

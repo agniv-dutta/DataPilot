@@ -1,0 +1,109 @@
+/* ============================================================================
+   Iris & Ember — design tokens (DataPilot)
+   Single source of truth. Mirrored in tailwind.config.ts.
+   Forbidden everywhere: pure white (#fff), pure black (#000), teal, cyan,
+   gold / yellow / amber.
+   ========================================================================== */
+
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+
+  /* Surfaces */
+  --canvas-rgb: 233 226 247; /* #E9E2F7 */
+  --surface-rgb: 244 239 252; /* #F4EFFC */
+  --sunken-rgb: 221 211 242; /* #DDD3F2 */
+  --line-rgb: 30 18 53; /* ink @ 10% */
+
+  /* Ink */
+  --ink-rgb: 30 18 53; /* #1E1235 */
+  --muted-rgb: 107 92 138; /* #6B5C8A */
+
+  /* Accents */
+  --iris-rgb: 91 61 245; /* #5B3DF5 */
+  --iris-hover-rgb: 74 43 224; /* #4A2BE0 */
+  --iris-active-rgb: 59 42 140; /* #3B2A8C */
+  --ember-rgb: 255 107 74; /* #FF6B4A */
+  --orchid-rgb: 198 91 207; /* #C65BCF */
+  --periwinkle-rgb: 142 162 255; /* #8EA2FF */
+  --berry-rgb: 179 25 91; /* #B3195B */
+  --leaf-rgb: 63 166 107; /* #3FA66B */
+
+  /* Chart palette (ordered) */
+  --chart-1: #5b3df5;
+  --chart-2: #ff6b4a;
+  --chart-3: #c65bcf;
+  --chart-4: #8ea2ff;
+  --chart-5: #8a1f5c;
+  --chart-6: #ff9e85;
+  --chart-7: #3b2a8c;
+  --chart-8: #d9a6f2;
+
+  /* Gradients */
+  --grad-hero: linear-gradient(135deg, #5b3df5 0%, #c65bcf 55%, #ff6b4a 100%);
+  --grad-soft: linear-gradient(
+    135deg,
+    rgba(142, 162, 255, 0.2) 0%,
+    rgba(198, 91, 207, 0.15) 50%,
+    rgba(255, 107, 74, 0.1) 100%
+  );
+  --grad-primary: linear-gradient(135deg, #5b3df5 0%, #7a3df0 60%, #c65bcf 100%);
+
+  /* Layered, iris-tinted depth */
+  --shadow-1: 0 1px 2px rgba(91, 61, 245, 0.08), 0 12px 32px -8px rgba(91, 61, 245, 0.18);
+  --shadow-2: 0 2px 4px rgba(91, 61, 245, 0.1), 0 20px 50px -12px rgba(91, 61, 245, 0.28);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+
+  /* Focus */
+  --focus-ring: rgba(91, 61, 245, 0.45);
+
+  /* Typography */
+  --font-display: 'Bricolage Grotesque Variable', 'Instrument Sans Variable', system-ui, sans-serif;
+  --font-ui: 'Instrument Sans Variable', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', monospace;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --canvas-rgb: 21 12 38; /* #150C26 */
+  --surface-rgb: 33 19 64; /* #211340 */
+  --sunken-rgb: 43 26 82; /* #2B1A52 */
+  --line-rgb: 237 230 255;
+
+  --ink-rgb: 237 230 255; /* #EDE6FF lilac, not white */
+  --muted-rgb: 180 166 214;
+
+  /* Accents lightened for AA on aubergine */
+  --iris-rgb: 138 115 255;
+  --iris-hover-rgb: 156 136 255;
+  --iris-active-rgb: 110 82 240;
+  --ember-rgb: 255 133 107;
+  --orchid-rgb: 214 126 224;
+  --periwinkle-rgb: 167 183 255;
+  --berry-rgb: 232 92 147;
+  --leaf-rgb: 87 201 138;
+
+  --chart-1: #8a73ff;
+  --chart-2: #ff856b;
+  --chart-3: #d67ee0;
+  --chart-4: #a7b7ff;
+  --chart-5: #e85c93;
+  --chart-6: #ffb4a0;
+  --chart-7: #a58cff;
+  --chart-8: #e0b8f5;
+
+  --grad-primary: linear-gradient(135deg, #6e52f0 0%, #8a73ff 55%, #d67ee0 100%);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -8px rgba(0, 0, 0, 0.5);
+  --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.35), 0 24px 60px -12px rgba(0, 0, 0, 0.6);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  --focus-ring: rgba(138, 115, 255, 0.55);
+}
+
+/* Film-grain overlay (4% opacity). Apply to a positioned element via .grain. */
+:root {
+  --grain-url: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}

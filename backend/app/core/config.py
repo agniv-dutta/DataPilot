@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = False
 
-    cors_origins: str = "http://localhost:3000,http://localhost:5173"
+    cors_origins: str = "http://localhost:5173,http://localhost:4173"
 
     # Uploads / datasets
     max_upload_bytes: int = 25 * 1024 * 1024  # 25MB

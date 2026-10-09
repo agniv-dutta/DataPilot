@@ -50,20 +50,21 @@ logic lives in services; config, LLM access, and sandboxing live in core.
 | LLM       | Anthropic (default) or OpenAI, behind a provider interface |
 | Frontend  | React 18, Vite, TypeScript (strict), Tailwind CSS, Recharts, TanStack Query |
 | Testing   | pytest (backend), ruff + mypy, eslint |
-| Packaging | Docker, docker compose, GitHub Actions |
+| Tooling   | GitHub Actions (CI), Makefile, cross-platform dev runner |
 
 ## Quickstart
 
-### Docker (recommended)
+### One command
 
 ```bash
-cp backend/.env.example backend/.env     # add your ANTHROPIC_API_KEY
-docker compose up --build               # http://localhost:3000
+# from the repo root, after installing dependencies (see below)
+node scripts/dev.mjs     # or: make dev
 ```
 
-The frontend is served by nginx on **:3000** and proxies `/api` to the backend on :8000.
+This starts the backend on **:8000** and the frontend on **:5173** with prefixed logs;
+`Ctrl+C` stops both.
 
-### Local development
+### Manual setup
 
 ```bash
 # backend
@@ -80,6 +81,18 @@ npm run dev                                          # http://localhost:5173
 ```
 
 The Vite dev server proxies `/api` to `http://localhost:8000`, so no CORS setup is needed.
+
+### Production build (local)
+
+```bash
+cd frontend
+npm run build
+npm run preview        # http://localhost:4173, proxies /api to :8000
+```
+
+`vite preview` also proxies `/api` to the backend, so the built SPA runs without a
+reverse proxy. For a real deployment, serve `frontend/dist` behind any static host and
+point `/api` at the backend (set `VITE_API_URL` if the API lives on another origin).
 
 ## Environment variables
 
@@ -98,7 +111,8 @@ See `backend/.env.example` for the full list. Key ones:
 | `RATE_LIMIT_PER_MINUTE` | `60` | Per-IP request limit |
 | `AGENT_MAX_ITERATIONS` | `6` | Max tool-calling loop depth |
 
-Frontend: `VITE_API_URL` (empty = same origin, the default for Docker).
+Frontend: `VITE_API_URL` (empty = same origin; the Vite dev/preview servers proxy `/api`
+to port 8000). Set it only when the API is served from a different origin.
 
 ## API
 
@@ -176,16 +190,17 @@ backend/
     models/     # pydantic schemas
   tests/
   scripts/      # sample-data generator
-  Dockerfile
 frontend/
   src/
     api/        # typed REST client
     components/ # ui, chat, charts, datasets, layout
-    hooks/      # chat stream, datasets, session, inspector
-    pages/      # styleguide (#/styleguide)
-  Dockerfile, nginx.conf
+    hooks/      # chat stream, datasets, session, inspector, theme
+    pages/      # landing (/), styleguide (#/styleguide)
+  src/styles/   # design tokens (Iris & Ember)
+scripts/
+  dev.mjs       # run backend + frontend together
 sample_data/    # generated CSVs
-docker-compose.yml
+Makefile
 ```
 
 ## Security notes

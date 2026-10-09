@@ -2,8 +2,10 @@ import { useRef, useState } from 'react'
 import { uploadFiles } from '../../api'
 import type { DatasetInfo } from '../../api/types'
 import { SAMPLE_DATASETS } from '../../lib/constants'
-import { cx } from '../../lib/utils'
+import { cn } from '../../lib/utils'
 import { useToast } from '../../hooks/useToast'
+import { Progress } from '../ui/Progress'
+import { ArrowRightIcon, UploadIcon } from '../ui/icons'
 
 interface UploadProgress {
   name: string
@@ -36,11 +38,8 @@ export function UploadZone({
     setBusy(true)
     setProgress(csvFiles.map((f) => ({ name: f.name, percent: 0, status: 'uploading' })))
     try {
-      const datasets = await uploadFiles(
-        sessionId,
-        csvFiles,
-        (name, percent) =>
-          setProgress((prev) => prev.map((p) => (p.name === name ? { ...p, percent } : p))),
+      const datasets = await uploadFiles(sessionId, csvFiles, (name, percent) =>
+        setProgress((prev) => prev.map((p) => (p.name === name ? { ...p, percent } : p))),
       )
       setProgress((prev) =>
         prev.map((p) => {
@@ -49,7 +48,10 @@ export function UploadZone({
         }),
       )
       onUploaded(datasets)
-      show({ tone: 'success', title: `Imported ${datasets.length} dataset${datasets.length > 1 ? 's' : ''}` })
+      show({
+        tone: 'success',
+        title: `Imported ${datasets.length} dataset${datasets.length > 1 ? 's' : ''}`,
+      })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Upload failed'
       setProgress((prev) => prev.map((p) => ({ ...p, status: 'error', error: message })))
@@ -57,10 +59,6 @@ export function UploadZone({
     } finally {
       setBusy(false)
     }
-  }
-
-  const sampleUpload = async (name: string) => {
-    await onSample(name)
   }
 
   return (
@@ -83,26 +81,18 @@ export function UploadZone({
           setDragging(false)
           void handleFiles(Array.from(e.dataTransfer.files))
         }}
-        className={cx(
-          'flex cursor-pointer flex-col items-center justify-center rounded-card border-2 border-dashed px-6 py-8 text-center transition-colors',
+        className={cn(
+          'flex cursor-pointer flex-col items-center justify-center rounded-card border-2 border-dashed px-6 py-7 text-center transition-colors',
           dragging
-            ? 'border-primary bg-primary-50'
-            : 'border-borderline bg-app hover:border-primary/50 hover:bg-primary-50/40',
+            ? 'border-iris bg-iris-soft'
+            : 'border-line-strong bg-sunken/50 hover:border-iris/50 hover:bg-iris-soft/50',
         )}
       >
-        <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary-100 text-primary">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M12 16V4m0 0L7 9m5-5 5 5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+        <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-pill bg-grad-soft text-iris-active">
+          <UploadIcon size={18} />
         </div>
-        <p className="text-sm font-bold text-navy">Drop CSVs here or click to browse</p>
-        <p className="mt-1 text-xs text-muted">Multiple files allowed · up to 25 MB each</p>
+        <p className="text-sm font-bold text-ink">Drop CSVs here or click to browse</p>
+        <p className="mt-1 text-xs text-muted">Multiple files · up to 25 MB each</p>
       </div>
       <input
         ref={inputRef}
@@ -119,43 +109,41 @@ export function UploadZone({
       {progress.length > 0 && (
         <ul className="space-y-2">
           {progress.map((p) => (
-            <li key={p.name} className="rounded-input border border-borderline bg-surface p-2">
+            <li key={p.name} className="rounded-input border border-line bg-surface p-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="truncate font-medium text-navy">{p.name}</span>
-                <span className="text-muted">
-                  {p.status === 'error' ? 'failed' : p.status === 'done' ? '✓' : `${Math.round(p.percent)}%`}
+                <span className="truncate font-medium text-ink">{p.name}</span>
+                <span className={cn('text-muted', p.status === 'done' && 'text-leaf', p.status === 'error' && 'text-berry')}>
+                  {p.status === 'error' ? 'failed' : p.status === 'done' ? 'done' : `${Math.round(p.percent)}%`}
                 </span>
               </div>
-              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-primary-100">
-                <div
-                  className={cx(
-                    'h-full rounded-full transition-all',
-                    p.status === 'error' ? 'bg-danger' : 'bg-primary',
-                  )}
-                  style={{ width: `${p.percent}%` }}
-                />
-              </div>
-              {p.error ? <p className="mt-1 text-[10px] text-danger">{p.error}</p> : null}
+              <Progress
+                value={p.percent}
+                tone={p.status === 'error' ? 'ember' : 'iris'}
+                className="mt-1.5"
+              />
+              {p.error ? <p className="mt-1 text-[10px] text-berry">{p.error}</p> : null}
             </li>
           ))}
         </ul>
       )}
 
-      <div className="rounded-card border border-borderline bg-app p-3">
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">Or try a sample dataset</p>
+      <div className="rounded-card border border-line bg-sunken/50 p-3">
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted">
+          Or try a sample dataset
+        </p>
         <div className="space-y-1.5">
           {SAMPLE_DATASETS.map((s) => (
             <button
               key={s.name}
               disabled={busy || !sessionId}
-              onClick={() => void sampleUpload(s.name)}
-              className="flex w-full items-center justify-between rounded-input border border-borderline bg-surface px-3 py-2 text-left transition-colors hover:border-primary/40 disabled:opacity-40"
+              onClick={() => void onSample(s.name)}
+              className="flex w-full items-center justify-between rounded-input border border-line bg-surface px-3 py-2 text-left transition-colors hover:border-iris/40 disabled:opacity-40"
             >
-              <span>
-                <span className="block text-xs font-semibold text-navy">{s.name}</span>
-                <span className="block text-[11px] text-muted">{s.description}</span>
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-semibold text-ink">{s.name}</span>
+                <span className="block truncate text-[11px] text-muted">{s.description}</span>
               </span>
-              <span className="text-primary">→</span>
+              <ArrowRightIcon size={14} className="shrink-0 text-iris" />
             </button>
           ))}
         </div>

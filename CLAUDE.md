@@ -6,7 +6,7 @@ Users upload CSVs and chat with their data.
 
 - `/backend` FastAPI, Python 3.11, pandas, DuckDB, pydantic v2, pytest
 - `/frontend` React 18 + Vite + TypeScript + Tailwind + Recharts
-- `/sample_data`, `/docs`, `docker-compose.yml`, `README.md`
+- `/sample_data`, `/scripts` (dev runner), `Makefile`, `README.md`
 
 ## Rules
 
@@ -24,6 +24,6 @@ Users upload CSVs and chat with their data.
 - Backend lint: `cd backend && ruff check . && mypy app`
 - Frontend build: `cd frontend && npm run build`
 - Frontend lint: `cd frontend && npm run lint`
-- Full stack: `docker compose up --build`
+- Full stack dev: `node scripts/dev.mjs` (backend :8000 + frontend :5173)
 
 Run the tests and fix failures before moving on.

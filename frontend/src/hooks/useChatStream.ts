@@ -15,12 +15,21 @@ export function useChatStream(sessionId: string | null) {
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const finalRef = useRef(false)
+  const stoppedRef = useRef(false)
 
   const reset = useCallback(() => {
     abortRef.current?.abort()
     finalRef.current = false
+    stoppedRef.current = false
     setEvents([])
     setError(null)
+    setConnected(false)
+  }, [])
+
+  /** Abort the in-flight request without discarding already-streamed events. */
+  const stop = useCallback(() => {
+    stoppedRef.current = true
+    abortRef.current?.abort()
     setConnected(false)
   }, [])
 
@@ -30,6 +39,7 @@ export function useChatStream(sessionId: string | null) {
       abortRef.current?.abort()
       abortRef.current = new AbortController()
       finalRef.current = false
+      stoppedRef.current = false
       setError(null)
       setEvents([])
       setConnected(true)
@@ -96,7 +106,7 @@ export function useChatStream(sessionId: string | null) {
         }
       } finally {
         setConnected(false)
-        if (!finalRef.current && syncFallback) {
+        if (!finalRef.current && !stoppedRef.current && syncFallback) {
           try {
             const synced = await syncFallback()
             if (synced) {
@@ -112,5 +122,5 @@ export function useChatStream(sessionId: string | null) {
     [sessionId],
   )
 
-  return { events, connected, error, send, reset }
+  return { events, connected, error, send, reset, stop }
 }

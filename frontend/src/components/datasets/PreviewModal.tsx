@@ -1,5 +1,5 @@
 import type { DatasetInfo } from '../../api/types'
-import { displayCell } from '../../lib/utils'
+import { displayCell, formatBytes } from '../../lib/utils'
 import { Badge } from '../ui/Badge'
 import { Modal } from '../ui/Modal'
 
@@ -11,37 +11,35 @@ export function PreviewModal({ dataset, onClose }: { dataset: DatasetInfo | null
     <Modal open title={dataset.filename} onClose={onClose} size="xl">
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="primary">{profile.row_count} rows</Badge>
-          <Badge tone="info">{profile.column_count} columns</Badge>
-          <Badge tone={profile.quality_score >= 85 ? 'success' : 'warning'}>
+          <Badge tone="iris">{profile.row_count} rows</Badge>
+          <Badge tone="periwinkle">{profile.column_count} columns</Badge>
+          <Badge tone="neutral">{formatBytes(dataset.size_bytes)}</Badge>
+          <Badge tone={profile.quality_score >= 85 ? 'leaf' : profile.quality_score >= 60 ? 'ember' : 'berry'}>
             quality {profile.quality_score}
           </Badge>
           {profile.quality_issues.map((issue) => (
-            <Badge key={issue} tone="warning">
+            <Badge key={issue} tone="ember">
               {issue}
             </Badge>
           ))}
         </div>
 
-        <div className="overflow-hidden rounded-input border border-borderline">
+        <div className="overflow-hidden rounded-input border border-line">
           <table className="w-full text-xs">
-            <thead className="bg-app">
+            <thead className="bg-sunken">
               <tr>
-                <th className="border-b border-borderline px-2 py-1.5 text-left font-semibold text-muted">
-                  column
-                </th>
-                <th className="border-b border-borderline px-2 py-1.5 text-left font-semibold text-muted">dtype</th>
-                <th className="border-b border-borderline px-2 py-1.5 text-left font-semibold text-muted">null %</th>
-                <th className="border-b border-borderline px-2 py-1.5 text-left font-semibold text-muted">unique</th>
-                <th className="border-b border-borderline px-2 py-1.5 text-left font-semibold text-muted">min/max</th>
-                <th className="border-b border-borderline px-2 py-1.5 text-left font-semibold text-muted">top values</th>
+                {['column', 'dtype', 'null %', 'unique', 'min/max', 'top values'].map((h) => (
+                  <th key={h} className="border-b border-line px-2 py-1.5 text-left font-semibold text-muted">
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {profile.columns.map((col) => (
-                <tr key={col.name} className="border-b border-borderline last:border-0">
-                  <td className="px-2 py-1 font-mono font-medium text-navy">{col.name}</td>
-                  <td className="px-2 py-1 font-mono text-primary-700">{col.dtype}</td>
+                <tr key={col.name} className="border-b border-line last:border-0">
+                  <td className="px-2 py-1 font-mono font-medium text-ink">{col.name}</td>
+                  <td className="px-2 py-1 font-mono text-periwinkle">{col.dtype}</td>
                   <td className="px-2 py-1">{col.null_pct > 0 ? `${col.null_pct}%` : '—'}</td>
                   <td className="px-2 py-1">{col.unique_count}</td>
                   <td className="px-2 py-1">
@@ -58,7 +56,7 @@ export function PreviewModal({ dataset, onClose }: { dataset: DatasetInfo | null
                       {col.top_values.slice(0, 5).map((tv, i) => (
                         <span
                           key={i}
-                          className="rounded bg-app px-1 py-0.5 font-mono text-[10px] text-muted"
+                          className="rounded bg-sunken px-1 py-0.5 font-mono text-[10px] text-muted"
                         >
                           {displayCell(tv.value, 16)} ({tv.count})
                         </span>
@@ -74,12 +72,15 @@ export function PreviewModal({ dataset, onClose }: { dataset: DatasetInfo | null
 
         <div>
           <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">Sample rows</h4>
-          <div className="overflow-x-auto rounded-input border border-borderline">
+          <div className="overflow-x-auto rounded-input border border-line">
             <table className="w-full text-xs">
-              <thead className="bg-app">
+              <thead className="bg-sunken">
                 <tr>
                   {profile.columns.map((c) => (
-                    <th key={c.name} className="border-b border-borderline px-2 py-1.5 text-left font-mono font-semibold text-muted">
+                    <th
+                      key={c.name}
+                      className="border-b border-line px-2 py-1.5 text-left font-mono font-semibold text-muted"
+                    >
                       {c.name}
                     </th>
                   ))}
@@ -87,7 +88,7 @@ export function PreviewModal({ dataset, onClose }: { dataset: DatasetInfo | null
               </thead>
               <tbody>
                 {profile.sample_rows.map((row, i) => (
-                  <tr key={i} className="border-b border-borderline last:border-0">
+                  <tr key={i} className="border-b border-line last:border-0">
                     {profile.columns.map((c) => (
                       <td key={c.name} className="px-2 py-1">
                         {displayCell(row[c.name], 40)}

@@ -1,45 +1,62 @@
 import { forwardRef } from 'react'
-import { cx } from '../../lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { cn } from '../../lib/utils'
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
-type Size = 'sm' | 'md' | 'lg'
+const button = cva(
+  [
+    'relative inline-flex items-center justify-center gap-2 rounded-input font-semibold',
+    'transition-all duration-150 ease-out-expo select-none',
+    'focus-visible:outline-none focus-visible:shadow-focus',
+    'disabled:pointer-events-none disabled:opacity-45',
+  ],
+  {
+    variants: {
+      variant: {
+        primary: [
+          'bg-iris text-surface shadow-soft',
+          'hover:bg-iris-hover hover:-translate-y-px hover:shadow-lift',
+          'active:translate-y-0 active:bg-iris-active',
+        ],
+        soft: [
+          'bg-iris-soft text-iris-active border border-iris/25',
+          'hover:border-iris/45 hover:bg-iris/20',
+        ],
+        ghost: 'text-muted hover:bg-sunken hover:text-ink',
+        ember: [
+          'bg-ember text-canvas shadow-soft',
+          'hover:-translate-y-px hover:shadow-lift hover:brightness-105',
+          'active:brightness-95',
+        ],
+        outline: 'border border-line-strong text-ink hover:bg-sunken',
+        danger: 'bg-berry text-surface hover:brightness-110 active:brightness-95',
+      },
+      size: {
+        sm: 'h-8 px-3 text-xs',
+        md: 'h-10 px-4 text-sm',
+        lg: 'h-12 px-6 text-base',
+      },
+      pill: { true: 'rounded-pill', false: '' },
+    },
+    defaultVariants: { variant: 'primary', size: 'md', pill: false },
+  },
+)
 
-export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: Variant
-  size?: Size
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof button> {
   loading?: boolean
 }
 
-const variants: Record<Variant, string> = {
-  primary:
-    'bg-primary text-white hover:bg-primary-hover active:bg-primary-active shadow-soft',
-  secondary:
-    'bg-surface text-primary border border-primary/30 hover:bg-primary-50 hover:border-primary/50',
-  ghost: 'text-muted hover:bg-primary-50 hover:text-navy',
-  danger: 'bg-danger text-white hover:bg-red-600',
-}
-
-const sizes: Record<Size, string> = {
-  sm: 'h-8 px-3 text-xs gap-1.5',
-  md: 'h-10 px-4 text-sm gap-2',
-  lg: 'h-11 px-5 text-sm gap-2',
-}
-
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = 'primary', size = 'md', loading = false, className, children, disabled, ...rest },
+  { variant, size, pill, loading = false, className, children, disabled, ...rest },
   ref,
 ) {
   return (
     <button
       ref={ref}
       disabled={disabled || loading}
-      className={cx(
-        'inline-flex items-center justify-center rounded-input font-semibold transition-colors',
-        'disabled:cursor-not-allowed disabled:opacity-50',
-        variants[variant],
-        sizes[size],
-        className,
-      )}
+      aria-busy={loading || undefined}
+      className={cn(button({ variant, size, pill }), className)}
       {...rest}
     >
       {loading && (
@@ -55,13 +72,16 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 
 export function IconButton({
   className,
+  active,
   ...rest
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { 'aria-label': string }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { 'aria-label': string; active?: boolean }) {
   return (
     <button
-      className={cx(
-        'inline-flex h-8 w-8 items-center justify-center rounded-input text-muted',
-        'hover:bg-primary-50 hover:text-primary focus-visible:ring-primary',
+      className={cn(
+        'inline-flex h-9 w-9 items-center justify-center rounded-input text-muted transition-colors',
+        'hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:shadow-focus',
+        'disabled:pointer-events-none disabled:opacity-40',
+        active && 'bg-iris-soft text-iris-active',
         className,
       )}
       {...rest}

@@ -1,23 +1,38 @@
-import { cx } from '../../lib/utils'
+import * as TooltipPrimitive from '@radix-ui/react-tooltip'
+import { cn } from '../../lib/utils'
+
+export function TooltipProvider({ children }: { children: React.ReactNode }) {
+  return <TooltipPrimitive.Provider delayDuration={250}>{children}</TooltipPrimitive.Provider>
+}
 
 export function Tooltip({
   label,
   children,
+  side = 'top',
   className,
 }: {
-  label: string
+  label: React.ReactNode
   children: React.ReactNode
+  side?: 'top' | 'right' | 'bottom' | 'left'
   className?: string
 }) {
   return (
-    <span className={cx('group/tip relative inline-flex', className)}>
-      {children}
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-input bg-navy px-2 py-1 text-xs font-medium text-white opacity-0 transition-opacity group-hover/tip:opacity-100"
-      >
-        {label}
-      </span>
-    </span>
+    <TooltipPrimitive.Root>
+      <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
+      <TooltipPrimitive.Portal>
+        <TooltipPrimitive.Content
+          side={side}
+          sideOffset={6}
+          className={cn(
+            'z-[70] max-w-xs rounded-input border border-line bg-ink px-2.5 py-1.5 text-xs font-medium text-canvas shadow-lift',
+            'data-[state=delayed-open]:animate-fade-in',
+            className,
+          )}
+        >
+          {label}
+          <TooltipPrimitive.Arrow className="fill-ink" width={10} height={5} />
+        </TooltipPrimitive.Content>
+      </TooltipPrimitive.Portal>
+    </TooltipPrimitive.Root>
   )
 }

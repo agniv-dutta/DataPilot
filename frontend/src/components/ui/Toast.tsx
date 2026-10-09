@@ -1,7 +1,26 @@
 import { useCallback, useMemo, useState } from 'react'
-import { cx } from '../../lib/utils'
+import { cn } from '../../lib/utils'
 import { ToastContext } from '../../hooks/useToast'
 import type { Toast } from '../../hooks/useToast'
+import { AlertIcon, CheckIcon, CloseIcon, SparkIcon } from './icons'
+
+const toneStyles: Record<Toast['tone'], string> = {
+  info: 'border-iris/30 bg-surface text-ink',
+  error: 'border-berry/40 bg-berry-soft text-ink',
+  success: 'border-leaf/40 bg-leaf-soft text-ink',
+}
+
+const toneIcon: Record<Toast['tone'], React.ReactNode> = {
+  info: <SparkIcon size={14} />,
+  error: <AlertIcon size={14} />,
+  success: <CheckIcon size={14} />,
+}
+
+const toneAccent: Record<Toast['tone'], string> = {
+  info: 'bg-iris-soft text-iris-active',
+  error: 'bg-berry/15 text-berry',
+  success: 'bg-leaf/15 text-leaf',
+}
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -29,24 +48,34 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={t.id}
             role="alert"
-            className={cx(
-              'pointer-events-auto animate-slide-up rounded-card border p-3 shadow-soft backdrop-blur',
-              t.tone === 'error' && 'border-red-200 bg-red-50 text-red-800',
-              t.tone === 'success' && 'border-emerald-200 bg-emerald-50 text-emerald-800',
-              t.tone === 'info' && 'border-primary-200 bg-white text-navy',
+            className={cn(
+              'pointer-events-auto animate-slide-up rounded-card border p-3 shadow-lift backdrop-blur',
+              toneStyles[t.tone],
             )}
           >
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-sm font-bold">{t.title}</p>
+            <div className="flex items-start gap-2.5">
+              <span
+                className={cn(
+                  'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-input',
+                  toneAccent[t.tone],
+                )}
+              >
+                {toneIcon[t.tone]}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold">{t.title}</p>
+                {t.description ? (
+                  <p className="mt-0.5 text-xs text-muted">{t.description}</p>
+                ) : null}
+              </div>
               <button
                 aria-label="Dismiss"
                 onClick={() => dismiss(t.id)}
-                className="text-xs opacity-60 hover:opacity-100"
+                className="text-muted transition-colors hover:text-ink"
               >
-                ✕
+                <CloseIcon size={14} />
               </button>
             </div>
-            {t.description ? <p className="mt-0.5 text-xs opacity-80">{t.description}</p> : null}
           </div>
         ))}
       </div>

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { chatSync } from '../../api'
 import type { ChatEvent, ChatFinalEvent } from '../../api/types'
 import { useChatStream } from '../../hooks/useChatStream'
 import { useToast } from '../../hooks/useToast'
 import { uniqueId } from '../../lib/utils'
 import { EmptyState } from '../ui/EmptyState'
+import { SparkIcon } from '../ui/icons'
 import { InputBox } from '../chat/InputBox'
 import type { ChatMessage } from '../chat/MessageList'
 import { MessageList } from '../chat/MessageList'
@@ -19,9 +20,10 @@ interface CommittedMessage {
 }
 
 export function ChatArea({ sessionId }: { sessionId: string | null }) {
-  const { events, error, send, reset } = useChatStream(sessionId)
+  const { events, error, send, reset, stop } = useChatStream(sessionId)
   const [messages, setMessages] = useState<CommittedMessage[]>([])
   const [streaming, setStreaming] = useState(false)
+  const [pendingId, setPendingId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const { show } = useToast()
 
@@ -36,112 +38,103 @@ export function ChatArea({ sessionId }: { sessionId: string | null }) {
   }
 
   const sendMessage = (message: string) => {
-    if (!sessionId) return
+    if (!sessionId || streaming) return
+    const uid = uniqueId('u')
+    const aid = uniqueId('a')
     setMessages((prev) => [
       ...prev,
-      { id: uniqueId('u'), role: 'user', content: message },
-      { id: uniqueId('a'), role: 'assistant', content: '', events: [] },
+      { id: uid, role: 'user', content: message },
+      { id: aid, role: 'assistant', content: '', events: [] },
     ])
+    setPendingId(aid)
     setStreaming(true)
     void send(message, () => syncFallback(message))
   }
 
-  // Commit the assistant bubble when a final event arrives.
+  // Fold streamed events into the pending assistant message.
   useEffect(() => {
-    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
+    if (!pendingId) return
     const final = events.find((e): e is ChatFinalEvent => e.type === 'final')
     const errorEvent = events.find((e) => e.type === 'error')
-
-    if (final && lastAssistant && !lastAssistant.final) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === lastAssistant.id
-            ? { ...m, final: final.final, events: [...(m.events ?? []), ...events.filter((e) => e.type !== 'chart' && e.type !== 'anomaly')] }
-            : m,
-        ),
-      )
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === pendingId
+          ? {
+              ...m,
+              events: events.filter((e) => e.type !== 'chart' && e.type !== 'anomaly'),
+              ...(final ? { final: final.final } : {}),
+              ...(errorEvent && 'message' in errorEvent ? { content: errorEvent.message } : {}),
+            }
+          : m,
+      ),
+    )
+    if (final || errorEvent) {
       setStreaming(false)
-      reset()
-    } else if (errorEvent && lastAssistant && !lastAssistant.final) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === lastAssistant.id
-            ? { ...m, content: `⚠️ ${'error' in errorEvent ? errorEvent.message : 'Something went wrong.'}` }
-            : m,
-        ),
-      )
-      setStreaming(false)
+      setPendingId(null)
       reset()
     }
-  }, [events, messages, reset])
+  }, [events, pendingId, reset])
 
   useEffect(() => {
     if (error) {
       show({ tone: 'error', title: 'Stream interrupted', description: error })
       setStreaming(false)
+      setPendingId(null)
     }
   }, [error, show])
 
-  // The streaming mechanics (chips) shown in the in-flight bubble.
-  const viewMessages: ChatMessage[] = useMemo(() => {
-    const committed: ChatMessage[] = messages.map((m) => {
-      if (m.role === 'user') return { id: m.id, role: 'user', content: m.content }
-      return {
-        id: m.id,
-        role: 'assistant',
-        content: m.content,
-        final: m.final,
-        events: m.final ? [...(m.events ?? [])] : [],
-      }
-    })
-
-    if (streaming && !committed.some((m) => m.role === 'assistant' && m.final)) {
-      committed.push({ id: 'live', role: 'assistant', content: '', events })
-    }
-    return committed
-  }, [messages, streaming, events])
+  const handleStop = () => {
+    stop()
+    setStreaming(false)
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === pendingId && !m.final ? { ...m, content: 'Stopped. Ask a follow-up whenever you are ready.' } : m,
+      ),
+    )
+    setPendingId(null)
+  }
 
   const hasDatasets = Boolean(sessionId)
   const noConversation = messages.length === 0 && !streaming
 
   return (
-    <main className="flex h-full min-w-0 flex-1 flex-col">
+    <main className="relative flex h-full min-w-0 flex-1 flex-col">
       {noConversation ? (
-        <div className="flex flex-1 flex-col items-center justify-center p-6">
-          <EmptyState
-            icon={
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path
-                  d="M4 17l4-5 4 2 5-6"
-                  stroke="#2563EB"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            }
-            title={hasDatasets ? 'Ask anything about your data' : 'Welcome to DataPilot'}
-            description={
-              hasDatasets
-                ? 'Start with one of the suggestions below or type your own question.'
-                : 'Upload a CSV on the left — or load a sample dataset — then chat with your data.'
-            }
+        <div className="relative flex flex-1 flex-col items-center justify-center gap-6 overflow-hidden p-6">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 animate-aurora bg-grad-soft opacity-70 blur-3xl"
           />
-          {hasDatasets && (
-            <SuggestionChips onPick={sendMessage} disabled={streaming} />
-          )}
-          <div className="mt-8 w-full max-w-2xl">
-            <InputBox onSend={sendMessage} disabled={!hasDatasets || streaming} />
+          <div className="relative flex flex-col items-center text-center">
+            <EmptyState
+              icon={<SparkIcon size={22} />}
+              title={hasDatasets ? 'Ask anything about your data' : 'Preparing your workspace'}
+              description={
+                hasDatasets
+                  ? 'Start with one of the suggestions below, or type your own question.'
+                  : 'Upload a CSV or load a sample dataset, then chat with your data.'
+              }
+            />
           </div>
+          {hasDatasets && <SuggestionChips onPick={sendMessage} disabled={streaming} />}
         </div>
       ) : (
-        <>
-          <div className="min-h-0 flex-1">
-            <MessageList messages={viewMessages} onSuggestion={sendMessage} scrollRef={scrollRef} />
-          </div>
-          <InputBox onSend={sendMessage} disabled={!hasDatasets || streaming} />
-        </>
+        <div className="min-h-0 flex-1">
+          <MessageList
+            messages={messages as ChatMessage[]}
+            onSuggestion={sendMessage}
+            scrollRef={scrollRef}
+            streamingId={streaming ? pendingId : null}
+          />
+        </div>
       )}
+      <InputBox
+        onSend={sendMessage}
+        onStop={handleStop}
+        streaming={streaming}
+        disabled={!hasDatasets}
+        autoFocus={!noConversation}
+      />
     </main>
   )
 }
