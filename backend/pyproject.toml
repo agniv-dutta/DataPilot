@@ -1,0 +1,46 @@
+[project]
+name = "ai-data-analyst-backend"
+version = "1.0.0"
+description = "FastAPI backend for the AI Data Analyst"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [".venv", "__pycache__"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM"]
+ignore = [
+  "S101",    # assert in tests
+  "S102",    # exec in sandbox (AST-validated)
+  "S603",    # subprocess call
+  "S110",    # try/except/pass is deliberate for best-effort cleanup
+  "E501",    # line length handled by formatter
+  "UP042",   # intentional str+Enum for JSON serialization
+  "B008",
+  "SIM105",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]
+"scripts/*" = ["S311", "B007"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["app"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+plugins = []
+
+[[tool.mypy.overrides]]
+module = "app.services.agent"
+disallow_untyped_defs = false

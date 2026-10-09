@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-app text-navy antialiased;
+}
+
+html.dark body {
+  @apply bg-navy-900 text-blue-50;
+}
+
+@layer base {
+  *:focus-visible {
+    @apply outline-none ring ring-primary/30;
+  }
+
+  ::selection {
+    @apply bg-primary-100 text-primary-800;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-card border border-borderline bg-surface shadow-softer;
+  }
+  .card-dark {
+    @apply border-navy-700 bg-navy-800 shadow-none;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-primary-200;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+.chart-card {
+  @apply rounded-card border border-borderline bg-surface p-4 shadow-softer;
+}
+html.dark .chart-card {
+  @apply border-navy-700 bg-navy-800;
+}
