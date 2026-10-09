@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 from fastapi import APIRouter
 
 from app.core.config import get_settings
@@ -15,10 +13,7 @@ router = APIRouter(prefix="/api", tags=["health"])
 @router.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     settings = get_settings()
-    if settings.llm_provider == "anthropic":
-        configured = bool(os.environ.get("ANTHROPIC_API_KEY"))
-    else:
-        configured = bool(os.environ.get("OPENAI_API_KEY"))
+    configured = bool(settings.groq_api_key.get_secret_value())
     return HealthResponse(
         status="ok",
         version="1.0.0",

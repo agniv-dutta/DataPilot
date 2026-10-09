@@ -33,7 +33,7 @@ flowchart LR
 
     SVC --> Store["SessionStore<br/>(datasets, history, cache)"]
     SVC --> Agent["AnalystAgent<br/>(tool-calling loop)"]
-    Agent --> LLM["LLM provider<br/>(Anthropic | OpenAI)"]
+    Agent --> LLM["LLM provider<br/>(Groq)"]
     Agent --> Sandbox["Sandbox<br/>read-only DuckDB + AST pandas"]
     Sandbox --> Store
     Agent -- "SSE events" --> Browser
@@ -47,7 +47,7 @@ logic lives in services; config, LLM access, and sandboxing live in core.
 | Area      | Choices |
 |-----------|---------|
 | Backend   | FastAPI, Python 3.11, pandas, DuckDB, pydantic v2, sqlglot, scikit-learn |
-| LLM       | Anthropic (default) or OpenAI, behind a provider interface |
+| LLM       | Groq (OpenAI-compatible; `openai/gpt-oss-120b` default), behind a provider interface |
 | Frontend  | React 18, Vite, TypeScript (strict), Tailwind CSS, Recharts, TanStack Query |
 | Testing   | pytest (backend), ruff + mypy, eslint |
 | Tooling   | GitHub Actions (CI), Makefile, cross-platform dev runner |
@@ -100,9 +100,10 @@ See `backend/.env.example` for the full list. Key ones:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `LLM_PROVIDER` | `anthropic` | `anthropic` or `openai` |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | — | Provider credentials (env only) |
-| `ANTHROPIC_MODEL` | `claude-sonnet-4-5` | Model id |
+| `LLM_PROVIDER` | `groq` | LLM provider |
+| `GROQ_API_KEY` | — | Groq API key (env only) |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Groq model id (must support tool calling) |
+| `GROQ_BASE_URL` | `https://api.groq.com` | Groq API base (SDK appends `/openai/v1`) |
 | `CORS_ORIGINS` | localhost origins | Comma-separated allowed origins |
 | `SQL_TIMEOUT_SECONDS` | `10` | Per-query SQL timeout |
 | `PANDAS_TIMEOUT_SECONDS` | `10` | Per-snippet pandas timeout |
@@ -172,8 +173,9 @@ plus a production build for the frontend on every push and PR.
   spawned worker process with a wall-clock timeout.
 - **sqlglot validation.** Only a single `SELECT`/`WITH` survives; DDL/DML, `PRAGMA`,
   `COPY`, `ATTACH`, `INSTALL`, `LOAD`, and file-reading table functions are rejected.
-- **Provider abstraction.** All model calls flow through `core/llm.py`; swapping
-  Anthropic ↔ OpenAI (or a mock in tests) is a one-line config change.
+- **Provider abstraction.** All model calls flow through `core/llm.py`; switching to
+  the mock in tests is a one-line change, and any OpenAI-compatible model on Groq can
+  be selected via `GROQ_MODEL`.
 - **SSE over POST.** Browsers' `EventSource` cannot POST, so the client streams the
   response body of a `fetch` request and parses `event:`/`data:` frames, with a
   synchronous endpoint as a fallback.

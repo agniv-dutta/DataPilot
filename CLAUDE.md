@@ -12,7 +12,7 @@ Users upload CSVs and chat with their data.
 
 - Backend and frontend are independent. Communicate only via REST + SSE.
 - Backend layers: `api/` (routes) -> `services/` (logic) -> `core/` (config, llm, sandbox). No business logic in routes.
-- All LLM calls go through `core/llm.py` behind a provider interface (Anthropic default, OpenAI swappable). Keys from env only.
+- All LLM calls go through `core/llm.py` behind a provider interface (Groq, OpenAI-compatible, default `openai/gpt-oss-120b`). Keys from env only (`GROQ_API_KEY`).
 - LLM-generated SQL/Pandas must NEVER run unsandboxed (read-only DuckDB, AST-validated pandas, timeouts, row limits).
 - Type hints everywhere, pydantic models for every request/response, structured logging, custom exceptions mapped to clean HTTP errors.
 - Write pytest tests for services. Keep functions small.

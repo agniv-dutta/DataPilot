@@ -12,7 +12,7 @@ def test_health(client: TestClient) -> None:
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "ok"
-    assert body["llm_provider"] in {"anthropic", "openai"}
+    assert body["llm_provider"] == "groq"
     assert isinstance(body["llm_configured"], bool)
 
 

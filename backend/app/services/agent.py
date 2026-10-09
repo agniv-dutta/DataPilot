@@ -92,9 +92,12 @@ TOOLS: list[dict[str, Any]] = [
                     "items": {"type": "string"},
                     "description": "One or more numeric column names",
                 },
-                "series": {"type": "string", "description": "Optional legend label"},
+                "series": {
+                    "type": ["string", "null"],
+                    "description": "Optional legend label; omit or null for a single series",
+                },
                 "data_ref": {
-                    "type": "string",
+                    "type": ["string", "null"],
                     "description": "'last_result' (default) or a table_name",
                 },
             },
@@ -111,7 +114,7 @@ TOOLS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "dataset": {"type": "string", "description": "table_name"},
-                "columns": {"type": "array", "items": {"type": "string"}},
+                "columns": {"type": ["array", "null"], "items": {"type": "string"}},
                 "method": {"type": "string", "enum": ["zscore", "iqr", "isolation_forest"]},
             },
             "required": ["dataset", "method"],
@@ -142,7 +145,10 @@ Ground rules (never break these):
 6. When a tool returns an error, read it, fix your query/code, and retry (at most twice).
 7. If a query returns 'truncated: true', say the result was capped and refine with aggregation or LIMIT.
 
-Final answer format — when you are done, reply with ONLY a JSON object (optionally wrapped in ```json fences) matching:
+Final answer format — when you are done, write your reply as a plain-text message
+starting with the JSON object (optionally wrapped in ```json fences). Never use a tool
+call for the answer: only the tools listed above exist, and there is no tool named
+`json`. Matching:
 {
   "answer": "<markdown, concise, with the key numbers bolded>",
   "insights": ["<3-6 bullet insights grounded in the data>"],

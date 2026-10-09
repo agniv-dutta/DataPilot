@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 os.environ.setdefault("RATE_LIMIT_PER_MINUTE", "10000")
-os.environ.setdefault("LLM_PROVIDER", "anthropic")
+os.environ.setdefault("LLM_PROVIDER", "groq")
 
 import pandas as pd
 import pytest

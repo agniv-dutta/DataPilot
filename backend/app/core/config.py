@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,9 +30,10 @@ class Settings(BaseSettings):
     max_query_cache: int = 128
 
     # Agent
-    llm_provider: str = "anthropic"  # anthropic | openai
-    anthropic_model: str = "claude-sonnet-4-5"
-    openai_model: str = "gpt-4o"
+    llm_provider: str = "groq"
+    groq_api_key: SecretStr = SecretStr("")
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_base_url: str = "https://api.groq.com"
     llm_max_tokens: int = 4096
     agent_max_iterations: int = 6
     memory_token_budget: int = 8000

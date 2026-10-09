@@ -1,16 +1,17 @@
-"""LLM provider abstraction. Anthropic default, OpenAI swappable.
+"""LLM provider abstraction. Groq (OpenAI-compatible) with tool calling.
 
-All keys come from env; none are ever hardcoded or logged.
+Models are served via Groq's OpenAI-compatible endpoint. All keys come from
+env; none are ever hardcoded or logged.
 """
 
 from __future__ import annotations
 
 import json
-import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import uuid4
 
 from app.core.config import get_settings
 from app.core.errors import LLMError
@@ -94,15 +95,22 @@ class LLMProvider(ABC):
     def model(self) -> str: ...
 
 
-class AnthropicProvider(LLMProvider):
-    name = "anthropic"
+class GroqProvider(LLMProvider):
+    """Groq cloud chat completions (OpenAI-compatible) with tool calling.
+
+    Default model ``openai/gpt-oss-120b`` supports tool use and JSON mode.
+    Other tool-calling models available on Groq include
+    ``openai/gpt-oss-20b``, ``qwen/qwen3.8-27b`` and ``allam-2-7b``.
+    """
+
+    name = "groq"
 
     @property
     def model(self) -> str:
-        return get_settings().anthropic_model
+        return get_settings().groq_model
 
     def is_configured(self) -> bool:
-        return bool(os.environ.get("ANTHROPIC_API_KEY"))
+        return bool(get_settings().groq_api_key.get_secret_value())
 
     def chat(
         self,
@@ -110,67 +118,11 @@ class AnthropicProvider(LLMProvider):
         tools: list[Json] | None = None,
         system: str | None = None,
     ) -> LLMResponse:
-        import anthropic
+        from groq import Groq
 
-        client = anthropic.Anthropic()
-        system_text = system or ""
-        api_messages = _to_anthropic_messages(messages)
-        kwargs: dict[str, Any] = {
-            "model": self.model,
-            "max_tokens": get_settings().llm_max_tokens,
-            "messages": api_messages,
-        }
-        if system_text:
-            kwargs["system"] = system_text
-        if tools:
-            kwargs["tools"] = [
-                {
-                    "name": t["name"],
-                    "description": t.get("description", ""),
-                    "input_schema": t["input_schema"],
-                }
-                for t in tools
-            ]
-        try:
-            response = client.messages.create(**kwargs)
-        except Exception as exc:  # noqa: BLE001
-            raise LLMError(f"Anthropic request failed: {exc}") from exc
-
-        text = "".join(block.text for block in response.content if block.type == "text")
-        tool_calls = [
-            ToolCall(id=block.id, name=block.name, input=dict(block.input))
-            for block in response.content
-            if block.type == "tool_use"
-        ]
-        stop = getattr(response, "stop_reason", "end") or "end"
-        return LLMResponse(
-            text=text,
-            tool_calls=tool_calls,
-            stop_reason="tool_use" if tool_calls else stop,
-            input_tokens=response.usage.input_tokens,
-            output_tokens=response.usage.output_tokens,
-        )
-
-
-class OpenAIProvider(LLMProvider):
-    name = "openai"
-
-    @property
-    def model(self) -> str:
-        return get_settings().openai_model
-
-    def is_configured(self) -> bool:
-        return bool(os.environ.get("OPENAI_API_KEY"))
-
-    def chat(
-        self,
-        messages: list[Message],
-        tools: list[Json] | None = None,
-        system: str | None = None,
-    ) -> LLMResponse:
-        from openai import OpenAI
-
-        client = OpenAI()
+        settings = get_settings()
+        api_key = settings.groq_api_key.get_secret_value()
+        client = Groq(api_key=api_key, base_url=settings.groq_base_url)
         api_messages: list[Json] = []
         if system:
             api_messages.append({"role": "system", "content": system})
@@ -178,14 +130,33 @@ class OpenAIProvider(LLMProvider):
         kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": api_messages,
-            "max_tokens": get_settings().llm_max_tokens,
+            "max_tokens": settings.llm_max_tokens,
         }
         if tools:
-            kwargs["tools"] = [{"type": "function", "function": t} for t in tools]
+            kwargs["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": t["name"],
+                        "description": t.get("description", ""),
+                        "parameters": t.get("input_schema")
+                        or t.get("parameters")
+                        or {"type": "object", "properties": {}},
+                    },
+                }
+                for t in tools
+            ]
         try:
             response = client.chat.completions.create(**kwargs)
         except Exception as exc:  # noqa: BLE001
-            raise LLMError(f"OpenAI request failed: {exc}") from exc
+            recovered = _recover_tool_use_failure(exc, tools or [])
+            if recovered is not None:
+                logger.warning(
+                    "recovered invalid tool call",
+                    extra={"event": f"{self.name}:tool_use_failed"},
+                )
+                return recovered
+            raise LLMError(f"Groq request failed: {exc}") from exc
 
         choice = response.choices[0]
         message = choice.message
@@ -206,53 +177,89 @@ class OpenAIProvider(LLMProvider):
         )
 
 
-def _to_anthropic_messages(messages: list[Message]) -> list[Json]:
-    """Convert internal messages to Anthropic's format (tool_result blocks)."""
-    out: list[Json] = []
-    for msg in messages:
-        if msg.role == "system":
+def _allows_null(spec: object) -> bool:
+    """True when a JSON-Schema property description admits a null value."""
+    if not isinstance(spec, dict):
+        return True
+    declared = spec.get("type")
+    if isinstance(declared, list):
+        return "null" in declared
+    return declared == "null"
+
+
+def _sanitize_tool_args(args: Json, schema: Json | None) -> Json:
+    """Drop nulls the tool's schema does not allow (models emit them anyway).
+
+    Optional fields our handlers read with ``args.get(...)`` are simply omitted;
+    nulls on fields that allow null are kept as-is.
+    """
+    properties = (schema or {}).get("properties") or {}
+    cleaned: Json = {}
+    for key, value in args.items():
+        if value is None and not _allows_null(properties.get(key)):
             continue
-        if msg.role == "tool":
-            block = {
-                "type": "tool_result",
-                "tool_use_id": msg.tool_call_id,
-                "content": msg.content,
-            }
-            if out and out[-1]["role"] == "assistant":
-                out[-1]["content"].append(block)
-            else:
-                out.append({"role": "user", "content": [block]})
-            continue
-        if msg.role == "assistant":
-            content: list[Json] = []
-            if msg.content:
-                content.append({"type": "text", "text": msg.content})
-            for tc in msg.tool_calls:
-                content.append(
-                    {"type": "tool_use", "id": tc.id, "name": tc.name, "input": tc.input}
-                )
-            out.append({"role": "assistant", "content": content or msg.content})
-            continue
-        out.append({"role": "user", "content": msg.content})
-    # Anthropic requires alternating turns starting with user; merge consecutive.
-    merged: list[Json] = []
-    for entry in out:
-        if merged and merged[-1]["role"] == entry["role"]:
-            prev = merged[-1]["content"]
-            cur = entry["content"]
-            if isinstance(prev, str) and isinstance(cur, str):
-                merged[-1]["content"] = prev + "\n\n" + cur
-            elif isinstance(prev, list) and isinstance(cur, list):
-                merged[-1]["content"] = prev + cur
-            elif isinstance(prev, list) and isinstance(cur, str):
-                merged[-1]["content"] = prev + [{"type": "text", "text": cur}]
-            elif isinstance(prev, str) and isinstance(cur, list):
-                merged[-1]["content"] = [{"type": "text", "text": prev}] + cur
-        else:
-            merged.append(dict(entry))
-    while merged and merged[0]["role"] != "user":
-        merged.pop(0)
-    return merged
+        cleaned[key] = value
+    return cleaned
+
+
+def _recover_tool_use_failure(exc: Exception, tools: list[Json]) -> LLMResponse | None:
+    """Recover from a Groq ``tool_use_failed`` 400.
+
+    Groq validates the model's generated tool call against the schema we sent and
+    rejects the whole request when it does not match. The attempted call is echoed
+    back in ``error.failed_generation``, so we can usually salvage it:
+
+    * a **known** tool with slightly invalid arguments (e.g. ``series: null`` on a
+      non-nullable field) is repaired and returned as a real tool call;
+    * an **invented** tool (e.g. ``json``) cannot run, but its payload is the final
+      answer the model wanted to write anyway, so it is returned as text.
+    """
+    body = getattr(exc, "body", None)
+    if not isinstance(body, dict):
+        return None
+    error = body.get("error")
+    if not isinstance(error, dict) or error.get("code") != "tool_use_failed":
+        return None
+    failed = error.get("failed_generation")
+    if isinstance(failed, str):
+        try:
+            failed = json.loads(failed)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(failed, dict):
+        return None
+    name = failed.get("name")
+    if not isinstance(name, str) or not name:
+        return None
+
+    payload = failed.get("arguments")
+    if isinstance(payload, str):
+        text = payload
+        try:
+            parsed: Json | None = json.loads(payload) if payload.strip() else {}
+        except json.JSONDecodeError:
+            parsed = None
+    elif isinstance(payload, dict):
+        parsed = payload
+        text = json.dumps(payload, ensure_ascii=False)
+    else:
+        return None
+
+    schemas = {t["name"]: (t.get("input_schema") or t.get("parameters")) for t in tools}
+    if name in schemas:
+        if not isinstance(parsed, dict):
+            return None
+        return LLMResponse(
+            text="",
+            tool_calls=[
+                ToolCall(id=f"call_{uuid4().hex}", name=name, input=_sanitize_tool_args(parsed, schemas[name]))
+            ],
+            stop_reason="tool_use",
+        )
+
+    if not text.strip():
+        return None
+    return LLMResponse(text=text, stop_reason="end")
 
 
 class MockProvider(LLMProvider):
@@ -289,8 +296,7 @@ _provider: LLMProvider | None = None
 def get_provider() -> LLMProvider:
     global _provider
     if _provider is None:
-        settings = get_settings()
-        _provider = OpenAIProvider() if settings.llm_provider == "openai" else AnthropicProvider()
+        _provider = GroqProvider()
     return _provider
 
 
@@ -309,8 +315,8 @@ def complete(
     p = provider or get_provider()
     if not p.is_configured() and p.name != "mock":
         raise LLMError(
-            "No LLM API key configured. Set ANTHROPIC_API_KEY (default provider) "
-            "or OPENAI_API_KEY with LLM_PROVIDER=openai."
+            "No LLM API key configured. Set GROQ_API_KEY to enable chat "
+            "(get one at https://console.groq.com/keys)."
         )
     logger.info("llm call", extra={"event": f"{p.name}:{p.model}"})
     return p.chat(messages, tools=tools, system=system)
