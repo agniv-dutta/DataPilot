@@ -25,9 +25,26 @@ export function ChatArea({ sessionId }: { sessionId: string | null }) {
   const [streaming, setStreaming] = useState(false)
   const [pendingId, setPendingId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const pinnedRef = useRef(true)
+  const [pinned, setPinned] = useState(true)
   const { show } = useToast()
 
+  const handleScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 64
+    pinnedRef.current = near
+    setPinned(near)
+  }
+
+  const jumpToLatest = () => {
+    pinnedRef.current = true
+    setPinned(true)
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+  }
+
   useEffect(() => {
+    if (!pinnedRef.current) return
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, events, streaming])
 
@@ -39,6 +56,8 @@ export function ChatArea({ sessionId }: { sessionId: string | null }) {
 
   const sendMessage = (message: string) => {
     if (!sessionId || streaming) return
+    pinnedRef.current = true
+    setPinned(true)
     const uid = uniqueId('u')
     const aid = uniqueId('a')
     setMessages((prev) => [
@@ -119,13 +138,23 @@ export function ChatArea({ sessionId }: { sessionId: string | null }) {
           {hasDatasets && <SuggestionChips onPick={sendMessage} disabled={streaming} />}
         </div>
       ) : (
-        <div className="min-h-0 flex-1">
+        <div className="relative flex min-h-0 flex-1 flex-col">
           <MessageList
             messages={messages as ChatMessage[]}
             onSuggestion={sendMessage}
             scrollRef={scrollRef}
+            onScroll={handleScroll}
             streamingId={streaming ? pendingId : null}
           />
+          {!pinned && (
+            <button
+              type="button"
+              onClick={jumpToLatest}
+              className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-line bg-surface px-3.5 py-1.5 text-xs font-semibold text-ink shadow-soft transition-colors hover:bg-sunken"
+            >
+              ↓ Latest
+            </button>
+          )}
         </div>
       )}
       <InputBox

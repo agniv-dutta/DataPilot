@@ -145,17 +145,20 @@ export function MessageList({
   messages,
   onSuggestion,
   scrollRef,
+  onScroll,
   streamingId,
 }: {
   messages: ChatMessage[]
   onSuggestion: (q: string) => void
   scrollRef: React.RefObject<HTMLDivElement | null>
+  onScroll?: React.UIEventHandler<HTMLDivElement>
   streamingId?: string | null
 }) {
   return (
     <div
       ref={scrollRef as React.RefObject<HTMLDivElement>}
-      className="flex flex-col gap-5 overflow-y-auto px-4 py-5 sm:px-6"
+      onScroll={onScroll}
+      className="scrollbar-thin min-h-0 flex-1 overscroll-contain overflow-y-auto flex flex-col gap-5 px-4 py-5 sm:px-6"
     >
       {messages.map((msg) =>
         msg.role === 'user' ? (
