@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from app.core.config import get_settings
-from app.core.errors import AppError, NotFoundError, SandboxError
+from app.core.errors import AgentError, AppError, NotFoundError, SandboxError
 from app.core.llm import LLMResponse, Message, ToolCall, complete
 from app.core.logging import get_logger
 from app.core.sandbox import ExecutionResult, run_pandas, run_sql
@@ -32,6 +32,41 @@ from app.services.session_store import Dataset, Session
 logger = get_logger(__name__)
 
 ChartLiteral = Literal["bar", "line", "pie", "scatter", "histogram", "area"]
+
+# Left behind when an older tool result has to be dropped to keep the request
+# under the provider's per-request token ceiling (Groq returns HTTP 413).
+TOOL_RESULT_DROPPED = json.dumps(
+    {
+        "truncated_for_context": True,
+        "note": (
+            "Earlier tool result dropped to fit the request budget. Re-run the "
+            "tool with a narrower aggregation, fewer columns, or a LIMIT."
+        ),
+    }
+)
+
+
+def _clip_tool_content(content: str, max_chars: int) -> str:
+    """Shrink one tool message so it cannot blow the provider request limit."""
+    if len(content) <= max_chars:
+        return content
+    payload: dict[str, Any] = {
+        "truncated_for_context": True,
+        "note": (
+            "Result clipped to fit the context budget. Re-run with an "
+            "aggregation, fewer columns, or a LIMIT to get what you need."
+        ),
+        "snippet": "",
+    }
+    # The envelope (marker + note) costs characters too; fit the whole message.
+    overhead = len(json.dumps(payload, default=str))
+    keep = max(0, max_chars - overhead)
+    clipped = json.dumps({**payload, "snippet": content[:keep]}, default=str)
+    while len(clipped) > max_chars and keep > 0:
+        keep = int(keep * 0.9)
+        clipped = json.dumps({**payload, "snippet": content[:keep]}, default=str)
+    return clipped
+
 
 # ---------------------------------------------------------------- tools
 
@@ -143,7 +178,7 @@ Ground rules (never break these):
 4. State assumptions explicitly (e.g. "revenue = sum(revenue)").
 5. Keep SQL to one SELECT statement. Table names are the `table_name` of each dataset.
 6. When a tool returns an error, read it, fix your query/code, and retry (at most twice).
-7. If a query returns 'truncated: true', say the result was capped and refine with aggregation or LIMIT.
+7. If a query returns 'truncated: true' or 'truncated_for_context': true, say the result was capped and refine with aggregation or LIMIT; never re-run the same wide query.
 
 Final answer format — when you are done, write your reply as a plain-text message
 starting with the JSON object (optionally wrapped in ```json fences). Never use a tool
@@ -201,12 +236,49 @@ class AnalystAgent:
         """Drop oldest non-system messages when over the token budget."""
 
         def tokens(msgs: list[Message]) -> int:
-            return sum(len(m.content) // 4 + 4 for m in msgs)
+            return sum(len(m.content or "") // 4 + 4 for m in msgs)
 
         budget = self.settings.memory_token_budget
         while len(messages) > 3 and tokens(messages) > budget:
             removed = messages.pop(0)
             logger.info("memory trimmed", extra={"event": removed.role})
+        return messages
+
+    def _bound_tool_traffic(self, messages: list[Message]) -> list[Message]:
+        """Keep the live request under the provider's per-request token ceiling.
+
+        Groq rejects any single request over its free-tier TPM budget with
+        HTTP 413 (`rate_limit_exceeded/tokens`), which cannot be fixed by
+        retrying. Tool results are therefore clipped in place and older ones
+        are replaced by a placeholder — never removed, because an assistant
+        message carrying ``tool_calls`` must be followed by its tool message.
+        """
+        overhead = len(SYSTEM_PROMPT) // 4 + len(json.dumps(TOOLS)) // 4
+        budget = max(1_000, self.settings.memory_token_budget - overhead)
+
+        def tokens() -> int:
+            # Tool traffic is JSON, which tokenizes denser than prose: measure
+            # at ~3 chars/token so the estimate errs on the safe side.
+            return sum(len(m.content or "") // 3 + 4 for m in messages)
+
+        cap = self.settings.tool_result_budget_chars
+        for m in messages:
+            if m.role == "tool" and len(m.content or "") > cap:
+                m.content = _clip_tool_content(m.content or "", cap)
+
+        while len(messages) > 1 and tokens() > budget:
+            idx = next(
+                (
+                    i
+                    for i, m in enumerate(messages[:-1])
+                    if m.role == "tool" and m.content != TOOL_RESULT_DROPPED
+                ),
+                None,
+            )
+            if idx is None:
+                break
+            messages[idx].content = TOOL_RESULT_DROPPED
+            logger.info("tool result dropped", extra={"event": "context_budget"})
         return messages
 
     def _remember(self, user_message: str, final: FinalAnswer) -> None:
@@ -238,6 +310,26 @@ class AnalystAgent:
             )
         return {"datasets": datasets}
 
+    def _bounded_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Cap rows in the LLM-facing copy of a result.
+
+        The caller keeps the full result for the UI; only what is sent back to
+        the model is bounded, so one wide query cannot blow the provider's
+        per-request token ceiling.
+        """
+        cap = self.settings.llm_result_rows
+        rows = payload.get("rows") or []
+        total = len(rows)
+        if total <= cap:
+            return payload
+        payload["rows"] = rows[:cap]
+        payload["truncated_for_context"] = True
+        payload["note"] = (
+            f"Showing the first {cap} of {total} rows. Cite numbers only from "
+            "these rows; use an aggregation or a LIMIT for the rest."
+        )
+        return payload
+
     def _tool_run_sql(self, query: str) -> tuple[str, ExecutionResult]:
         started = time.perf_counter()
         result = run_sql(self.session, query)
@@ -253,8 +345,8 @@ class AnalystAgent:
             }
         )
         self._log_tool("run_sql", started, len(result.rows))
-        payload = result.to_dict()
-        payload["note"] = "All numbers you cite must come from these rows."
+        payload = self._bounded_payload(result.to_dict())
+        payload.setdefault("note", "All numbers you cite must come from these rows.")
         return json.dumps(payload, default=str), result
 
     def _tool_run_pandas(self, code: str) -> tuple[str, ExecutionResult]:
@@ -264,7 +356,9 @@ class AnalystAgent:
         self.last_sql = None
         self.last_pandas = code
         self._log_tool("run_pandas", started, len(result.rows))
-        return json.dumps(result.to_dict(), default=str), result
+        payload = self._bounded_payload(result.to_dict())
+        payload.setdefault("note", "All numbers you cite must come from these rows.")
+        return json.dumps(payload, default=str), result
 
     def _resolve_chart_source(self, data_ref: str | None) -> tuple[list[str], list[list[Any]]]:
         if data_ref and data_ref not in ("last_result", "", None):
@@ -479,6 +573,7 @@ class AnalystAgent:
         while rounds < self.settings.agent_max_iterations:
             rounds += 1
             yield AgentEvent("status", {"message": "Thinking…"})
+            messages = self._bound_tool_traffic(messages)
             try:
                 response: LLMResponse = complete(messages, tools=TOOLS, system=SYSTEM_PROMPT)
             except AppError as exc:
@@ -525,6 +620,7 @@ class AnalystAgent:
                 ),
             )
         )
+        messages = self._bound_tool_traffic(messages)
         try:
             response = complete(messages, tools=None, system=SYSTEM_PROMPT)
             final = self._parse_final(response.text)
@@ -593,9 +689,10 @@ class AnalystAgent:
                 anomaly_report = self._tool_detect_anomalies(call.input)
                 anomalies.append(anomaly_report)
                 self._log_tool("detect_anomalies", started, anomaly_report.flagged_count)
-                return json.dumps(anomaly_report.model_dump(), default=str), AgentEvent(
-                    "anomaly", {"anomaly": anomaly_report.model_dump()}
-                )
+                # The UI gets the full report; only the LLM-facing copy is bounded.
+                full = anomaly_report.model_dump()
+                slim = self._bounded_payload(dict(full))
+                return json.dumps(slim, default=str), AgentEvent("anomaly", {"anomaly": full})
 
             if call.name == "data_quality_report":
                 quality = self._tool_data_quality(call.input)
@@ -665,13 +762,25 @@ class AnalystAgent:
     def run_final(self, user_message: str) -> tuple[FinalAnswer, list[dict[str, Any]], int]:
         """Non-streaming fallback: collect events into one response."""
         final: FinalAnswer | None = None
+        error_event: AgentEvent | None = None
         iterations = 0
         for event in self.run(user_message):
             if event.type == "final":
                 final = FinalAnswer.model_validate(event.data["final"])
                 iterations = event.data.get("iterations", 0)
+            elif event.type == "error":
+                error_event = event
         if final is None:
-            final = FinalAnswer(answer="The agent produced no answer.")
+            if error_event is not None:
+                raise AgentError(
+                    str(
+                        error_event.data.get(
+                            "message", "The agent failed to produce an answer."
+                        )
+                    ),
+                    details={"upstream_code": error_event.data.get("code", "agent_error")},
+                )
+            raise AgentError("The agent finished without producing an answer.")
         return final, self.tool_log, iterations
 
 

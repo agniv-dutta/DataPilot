@@ -9,7 +9,7 @@ import pandas as pd
 from fastapi.testclient import TestClient
 
 from app.core.llm import LLMResponse, MockProvider, ToolCall
-from app.services.agent import AnalystAgent
+from app.services.agent import AgentEvent, AnalystAgent
 from app.services.session_store import get_store
 from tests.conftest import make_session_with_csv
 
@@ -141,6 +141,21 @@ def test_chat_sync_endpoint(client: TestClient, mock_llm: MockProvider) -> None:
     assert "North" in body["final"]["answer"]
     assert body["iterations"] >= 1
     assert body["tool_calls"]
+
+
+def test_chat_sync_surfaces_agent_error(client: TestClient, monkeypatch) -> None:
+    def failed_run(_self, _message):
+        yield AgentEvent("error", {"message": "provider unavailable", "code": "llm_error"})
+
+    monkeypatch.setattr(AnalystAgent, "run", failed_run)
+    sid = make_session_with_csv(client)
+    response = client.post(f"/api/sessions/{sid}/chat/sync", json={"message": "Analyze this"})
+
+    assert response.status_code == 500
+    body = response.json()["error"]
+    assert body["code"] == "agent_error"
+    assert body["message"] == "provider unavailable"
+    assert body["details"]["upstream_code"] == "llm_error"
 
 
 def test_chat_stream_sse(client: TestClient, mock_llm: MockProvider) -> None:

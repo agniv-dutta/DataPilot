@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 4096
     agent_max_iterations: int = 6
     memory_token_budget: int = 8000
+    # Bound what a tool is allowed to put in the LLM request. Groq rejects any
+    # single request over its per-request token ceiling with HTTP 413.
+    tool_result_budget_chars: int = 6_000
+    llm_result_rows: int = 50
 
     # Ops
     rate_limit_per_minute: int = 60

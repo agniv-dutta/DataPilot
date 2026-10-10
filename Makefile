@@ -1,4 +1,4 @@
-.PHONY: help install test lint format backend frontend dev frontend-build sample clean
+.PHONY: help install test lint format backend frontend dev frontend-build sample clean up eval
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -25,6 +25,12 @@ frontend: ## Run the frontend dev server (http://localhost:5173)
 
 dev: ## Run backend + frontend together (http://localhost:5173)
 	node scripts/dev.mjs
+
+up: ## Build and start the Docker Compose stack
+	docker compose up --build
+
+eval: ## Run the six documented analyst questions against a running API
+	python scripts/eval.py
 
 frontend-build: ## Production build of the frontend
 	cd frontend && npm run build

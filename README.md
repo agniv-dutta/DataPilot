@@ -54,6 +54,31 @@ logic lives in services; config, LLM access, and sandboxing live in core.
 
 ## Quickstart
 
+### Docker Compose
+
+Docker is the quickest way to run the production frontend and API together. From a
+clean clone, run:
+
+```bash
+docker compose up --build
+```
+
+Open <http://localhost:3000>; the frontend proxies `/api` to the backend. The API is
+also available at <http://localhost:8000> and its liveness endpoint at
+<http://localhost:8000/api/health>. Compose uses `backend/.env.example` as its default
+environment file, so the stack boots without credentials; add a real
+`GROQ_API_KEY` to `backend/.env` for live analysis. Compose loads that optional file
+after the example file, so your values override the defaults.
+
+To verify both services after startup:
+
+```bash
+curl http://localhost:8000/api/health
+curl -I http://localhost:3000/
+```
+
+Stop the stack with `docker compose down`.
+
 ### One command
 
 ```bash
@@ -96,7 +121,8 @@ point `/api` at the backend (set `VITE_API_URL` if the API lives on another orig
 
 ## Environment variables
 
-See `backend/.env.example` for the full list. Key ones:
+`backend/.env.example` documents every backend setting. Its matching variable names
+are loaded case-insensitively by Pydantic Settings:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -111,6 +137,20 @@ See `backend/.env.example` for the full list. Key ones:
 | `MAX_UPLOAD_BYTES` | `26214400` | Per-file upload cap (25 MB) |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Per-IP request limit |
 | `AGENT_MAX_ITERATIONS` | `6` | Max tool-calling loop depth |
+| `APP_NAME` | `AI Data Analyst` | FastAPI title |
+| `ENVIRONMENT` | `development` | Deployment environment label |
+| `DEBUG` | `false` | Debug flag |
+| `LOG_LEVEL` | `INFO` | Application log level |
+| `LLM_MAX_TOKENS` | `4096` | Maximum generated tokens |
+| `GROQ_BASE_URL` | `https://api.groq.com` | Groq-compatible API base |
+| `MAX_FILES_PER_SESSION` | `20` | Upload count cap per session |
+| `MAX_ROWS_PROFILED` | `200000` | Maximum rows profiled per dataset |
+| `SAMPLE_ROWS` | `5` | Rows included in schema samples |
+| `PANDAS_TIMEOUT_SECONDS` | `10` | Restricted pandas execution timeout |
+| `MAX_QUERY_CACHE` | `128` | Session query-cache size |
+| `MEMORY_TOKEN_BUDGET` | `8000` | Conversation and tool context budget |
+| `TOOL_RESULT_BUDGET_CHARS` | `6000` | Maximum LLM-facing tool-result size |
+| `LLM_RESULT_ROWS` | `50` | Rows retained in LLM-facing query results |
 
 Frontend: `VITE_API_URL` (empty = same origin; the Vite dev/preview servers proxy `/api`
 to port 8000). Set it only when the API is served from a different origin.
@@ -162,6 +202,17 @@ npm run build
 
 CI (`.github/workflows/ci.yml`) runs ruff, mypy, and pytest for the backend, and eslint
 plus a production build for the frontend on every push and PR.
+
+Run the six README prompts against a running API (with a configured LLM key) using
+`make eval`. Set `DATAPILOT_API_URL` to target a different API URL.
+
+## Demo assets
+
+**Screenshots:** _Placeholder — add product screenshots here._
+
+**Demo video:** _Placeholder — add a demo video link here._
+
+**Live demo:** _Placeholder — add a deployed application link here._
 
 ## Design decisions
 
