@@ -57,10 +57,19 @@ export interface ChartSpec {
   data: Record<string, unknown>[]
 }
 
+export interface AnomalyDetail {
+  column: string
+  value: number | null
+  expected_low: number | null
+  expected_high: number | null
+  basis: 'iqr' | 'zscore'
+}
+
 export interface AnomalyRow {
   row_index: number
   reasons: string[]
   values: Record<string, unknown>
+  details?: AnomalyDetail[]
 }
 
 export interface AnomalyReport {

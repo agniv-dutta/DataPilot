@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { TableResult } from '../../api/types'
 import { Badge } from '../ui/Badge'
 import { IconButton } from '../ui/Button'
-import { TableIcon } from '../ui/icons'
+import { DownloadIcon, TableIcon } from '../ui/icons'
 import { displayCell, downloadText } from '../../lib/utils'
 
 const PAGE_SIZE = 20
@@ -66,9 +66,7 @@ export function ResultTable({ table }: { table: TableResult }) {
           {table.truncated ? <Badge tone="ember">truncated</Badge> : null}
           <span>{new Intl.NumberFormat('en-US').format(rows.length)} rows</span>
           <IconButton aria-label="Export CSV" onClick={exportCsv} className="h-6 w-6">
-            <span aria-hidden className="text-xs">
-              &darr;
-            </span>
+            <DownloadIcon size={13} />
           </IconButton>
         </div>
       </div>
@@ -77,7 +75,10 @@ export function ResultTable({ table }: { table: TableResult }) {
           <thead className="sticky top-0 bg-surface">
             <tr>
               {table.columns.map((col) => (
-                <th key={col}>
+                <th
+                  key={col}
+                  aria-sort={sort?.col === col ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}
+                >
                   <button
                     onClick={() => toggleSort(col)}
                     className="w-full px-3 py-1.5 text-left font-semibold text-muted transition-colors hover:text-iris-active"

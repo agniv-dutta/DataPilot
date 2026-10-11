@@ -2,13 +2,14 @@ import type { ChartSpec, DataQualityReport } from '../../api/types'
 import { formatCompact } from '../../lib/utils'
 import { useInspector } from '../../hooks/useInspector'
 import { LazyChartRenderer } from '../charts/LazyChartRenderer'
+import { Button } from '../ui/Button'
 import { CodeBlock } from '../ui/CodeBlock'
 import { EmptyState } from '../ui/EmptyState'
 import { Badge } from '../ui/Badge'
 import { ScoreRing } from '../ui/Progress'
 import { Skeleton } from '../ui/Skeleton'
 import { Tabs } from '../ui/Tabs'
-import { ChartIcon, DatabaseIcon, CloseIcon, SqlIcon } from '../ui/icons'
+import { AlertIcon, ChartIcon, DatabaseIcon, CloseIcon, RefreshIcon, SqlIcon } from '../ui/icons'
 
 function QualityCard({ q }: { q: DataQualityReport }) {
   const issues = [
@@ -51,16 +52,97 @@ function QualityCard({ q }: { q: DataQualityReport }) {
   )
 }
 
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-3" aria-hidden>
+      {[0, 1].map((i) => (
+        <div key={i} className="rounded-card border border-line bg-surface p-3 shadow-soft">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 space-y-1.5">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-2.5 w-20" />
+            </div>
+            <Skeleton className="h-11 w-11 rounded-full" />
+          </div>
+          <div className="mt-3 space-y-1.5">
+            <Skeleton className="h-2.5 w-full" />
+            <Skeleton className="h-2.5 w-4/5" />
+            <Skeleton className="h-2.5 w-3/5" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ChartSkeletons() {
+  return (
+    <div className="space-y-3" aria-hidden>
+      {[0, 1].map((i) => (
+        <div key={i} className="rounded-card border border-line bg-surface p-3 shadow-soft">
+          <Skeleton className="h-3 w-32" />
+          <div className="mt-3 flex h-28 items-end gap-2">
+            <Skeleton className="h-[62%] w-full rounded-t-input" />
+            <Skeleton className="h-[88%] w-full rounded-t-input" />
+            <Skeleton className="h-[44%] w-full rounded-t-input" />
+            <Skeleton className="h-[74%] w-full rounded-t-input" />
+            <Skeleton className="h-[56%] w-full rounded-t-input" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function HistorySkeletons() {
+  return (
+    <div className="space-y-2" aria-hidden>
+      {[0, 1].map((i) => (
+        <div key={i} className="rounded-input border border-line bg-surface p-3">
+          <Skeleton className="h-2.5 w-24" />
+          <Skeleton className="mt-2.5 h-2.5 w-full" />
+          <Skeleton className="mt-1.5 h-2.5 w-3/4" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function InspectorError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  return (
+    <EmptyState
+      compact
+      icon={<AlertIcon size={18} />}
+      title="Inspector unavailable"
+      description={
+        error instanceof Error ? error.message : 'The backend did not respond. Is it running?'
+      }
+      actions={
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          <RefreshIcon size={13} className="mr-1.5" />
+          Retry
+        </Button>
+      }
+    />
+  )
+}
+
+function NoSessionYet() {
+  return (
+    <EmptyState
+      compact
+      icon={<DatabaseIcon size={18} />}
+      title="No session yet"
+      description="A session is created automatically — quality metrics appear here as soon as one is ready."
+    />
+  )
+}
+
 function Overview({ sessionId }: { sessionId: string | null }) {
-  const { data, isLoading } = useInspector(sessionId)
-  if (isLoading || !sessionId) {
-    return (
-      <div className="space-y-3">
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-24 w-full" />
-      </div>
-    )
-  }
+  const { data, isLoading, isError, error, refetch } = useInspector(sessionId)
+  if (!sessionId) return <NoSessionYet />
+  if (isLoading) return <OverviewSkeleton />
+  if (isError) return <InspectorError error={error} onRetry={() => void refetch()} />
   if (!data || data.quality.length === 0) {
     return (
       <EmptyState
@@ -81,8 +163,10 @@ function Overview({ sessionId }: { sessionId: string | null }) {
 }
 
 function PinnedCharts({ sessionId }: { sessionId: string | null }) {
-  const { data, isLoading } = useInspector(sessionId)
-  if (isLoading || !sessionId) return <Skeleton className="h-40 w-full" />
+  const { data, isLoading, isError, error, refetch } = useInspector(sessionId)
+  if (!sessionId) return <NoSessionYet />
+  if (isLoading) return <ChartSkeletons />
+  if (isError) return <InspectorError error={error} onRetry={() => void refetch()} />
   if (!data || data.pinned_charts.length === 0) {
     return (
       <EmptyState
@@ -103,8 +187,10 @@ function PinnedCharts({ sessionId }: { sessionId: string | null }) {
 }
 
 function QueryHistory({ sessionId }: { sessionId: string | null }) {
-  const { data, isLoading } = useInspector(sessionId)
-  if (isLoading || !sessionId) return <Skeleton className="h-24 w-full" />
+  const { data, isLoading, isError, error, refetch } = useInspector(sessionId)
+  if (!sessionId) return <NoSessionYet />
+  if (isLoading) return <HistorySkeletons />
+  if (isError) return <InspectorError error={error} onRetry={() => void refetch()} />
   if (!data || data.query_history.length === 0) {
     return (
       <EmptyState
@@ -145,7 +231,7 @@ export function Inspector({
         <button
           aria-label="Close inspector"
           onClick={onClose}
-          className="fixed inset-0 z-30 bg-ink/30 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-30 bg-scrim/30 backdrop-blur-sm lg:hidden"
         />
       )}
       <aside

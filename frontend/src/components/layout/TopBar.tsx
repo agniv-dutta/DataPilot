@@ -19,7 +19,7 @@ export function TopBar({
   const { theme, toggle } = useTheme()
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line px-2.5 sm:px-4">
+    <header className="flex h-14 shrink-0 items-center gap-2 px-2.5 sm:px-4">
       <IconButton aria-label="Open datasets" onClick={onMenu} className="lg:hidden">
         <MenuIcon size={18} />
       </IconButton>

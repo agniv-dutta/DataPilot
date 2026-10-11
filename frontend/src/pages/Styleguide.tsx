@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { CHART_PALETTE } from '../lib/constants'
 import { useTheme } from '../hooks/useTheme'
+import { useToast } from '../hooks/useToast'
+import { Avatar } from '../components/ui/Avatar'
 import { Badge } from '../components/ui/Badge'
 import { Button, IconButton } from '../components/ui/Button'
 import { Card, CardBody, CardHeader } from '../components/ui/Card'
@@ -17,11 +19,17 @@ import { StatCard } from '../components/ui/StatCard'
 import { Switch } from '../components/ui/Switch'
 import { Tabs } from '../components/ui/Tabs'
 import { Tooltip } from '../components/ui/Tooltip'
-import { MoonIcon, SunIcon, TrendIcon } from '../components/ui/icons'
+import * as Icons from '../components/ui/icons'
+import { ChartRenderer } from '../components/charts/ChartRenderer'
+import { DatasetCard } from '../components/datasets/DatasetCard'
+import { PreviewModal } from '../components/datasets/PreviewModal'
+import { UploadZone } from '../components/datasets/UploadZone'
 import { Markdown } from '../components/chat/Markdown'
 import { ResultTable } from '../components/chat/ResultTable'
 import { AnomalyList } from '../components/chat/AnomalyList'
-import type { AnomalyReport, TableResult } from '../api/types'
+import { FinalAnswerView } from '../components/chat/FinalAnswerView'
+import { SuggestionChips } from '../components/chat/SuggestionChips'
+import type { AnomalyReport, ChartSpec, DatasetInfo, FinalAnswer, TableResult } from '../api/types'
 
 const SAMPLE_TABLE: TableResult = {
   title: 'Revenue by region',
@@ -42,9 +50,79 @@ const SAMPLE_ANOMALY: AnomalyReport = {
   flagged_count: 2,
   total_count: 12,
   rows: [
-    { row_index: 0, reasons: ['z-score = 4.2'], values: { date: '2023-03-15', revenue: 19_842 } },
-    { row_index: 1, reasons: ['z-score = 3.7, outside IQR'], values: { date: '2023-07-02', revenue: 17_210 } },
+    {
+      row_index: 0,
+      reasons: ['revenue 4.2σ above mean of 8,410'],
+      values: { date: '2023-03-15', revenue: 19_842 },
+      details: [
+        { column: 'revenue', value: 19_842, expected_low: 5_900, expected_high: 10_920, basis: 'zscore' },
+      ],
+    },
+    {
+      row_index: 1,
+      reasons: ['revenue above the IQR fence (17,210 vs 14,120)'],
+      values: { date: '2023-07-02', revenue: 17_210 },
+      details: [
+        { column: 'revenue', value: 17_210, expected_low: 1_240, expected_high: 14_120, basis: 'iqr' },
+      ],
+    },
   ],
+}
+
+const SAMPLE_CHART: ChartSpec = {
+  chart_type: 'bar',
+  title: 'Revenue by region',
+  x: 'region',
+  x_type: 'category',
+  y_label: 'revenue (USD)',
+  series: [{ name: 'revenue', data: [128_450, 96_120, 62_400, 48_900] }],
+  data: [
+    { region: 'West', revenue: 128_450 },
+    { region: 'East', revenue: 96_120 },
+    { region: 'South', revenue: 62_400 },
+    { region: 'North', revenue: 48_900 },
+  ],
+}
+
+const SAMPLE_DATASET: DatasetInfo = {
+  file_id: 'demo-1',
+  filename: 'sales.csv',
+  table_name: 'sales',
+  size_bytes: 1_240_000,
+  uploaded_at: '2026-10-11T09:00:00Z',
+  profile: {
+    row_count: 2000,
+    column_count: 3,
+    columns: [
+      { name: 'region', dtype: 'object', null_pct: 0, unique_count: 4, min: null, max: null, mean: null, top_values: [{ value: 'West', count: 512 }] },
+      { name: 'revenue', dtype: 'float64', null_pct: 0.4, unique_count: 1876, min: 12, max: 19_842, mean: 418, top_values: [{ value: 320, count: 4 }] },
+      { name: 'orders', dtype: 'int64', null_pct: 0, unique_count: 96, min: 1, max: 40, mean: 6, top_values: [{ value: 3, count: 210 }] },
+    ],
+    sample_rows: [
+      { region: 'West', revenue: 128.45, orders: 3 },
+      { region: 'East', revenue: 96.12, orders: 2 },
+    ],
+    quality_score: 92,
+    quality_issues: ['2 nulls in revenue'],
+  },
+}
+
+const ICON_LIST = (Object.entries(Icons) as Array<[string, React.ComponentType<{ size?: number }>]>).filter(
+  ([name]) => name.endsWith('Icon'),
+)
+
+/** SQL-only final answer: proves the tab strip disappears for a lone part. */
+const SAMPLE_FINAL: FinalAnswer = {
+  answer:
+    'The **West region** leads with $128,450 across 812 orders — about 38% of total revenue.',
+  insights: ['West beats East by 34%', 'Highest average order value at $158'],
+  sql: 'SELECT region, SUM(revenue) AS revenue\nFROM sales\nGROUP BY region\nORDER BY revenue DESC\nLIMIT 1;',
+  pandas_code: null,
+  charts: [],
+  tables: [],
+  anomalies: [],
+  reasoning: [],
+  follow_up_suggestions: ['Show the monthly revenue trend', 'Who are the top 5 customers?'],
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -67,10 +145,12 @@ function Swatch({ label, value }: { label: string; value: string }) {
 
 export function Styleguide() {
   const [modalOpen, setModalOpen] = useState(false)
+  const [previewData, setPreviewData] = useState<DatasetInfo | null>(null)
   const [seg, setSeg] = useState('light')
   const [felt, setFelt] = useState(true)
   const [region, setRegion] = useState('west')
   const { theme, toggle } = useTheme()
+  const { show } = useToast()
   const pct = [20, 35, 60, 45, 80, 68, 55, 40, 72, 61, 49, 33]
 
   return (
@@ -89,7 +169,7 @@ export function Styleguide() {
           </div>
           <Tooltip label="Toggle light / dark">
             <IconButton aria-label="Toggle theme" onClick={toggle}>
-              {theme === 'dark' ? <SunIcon size={16} /> : <MoonIcon size={16} />}
+              {theme === 'dark' ? <Icons.SunIcon size={16} /> : <Icons.MoonIcon size={16} />}
             </IconButton>
           </Tooltip>
         </header>
@@ -256,7 +336,7 @@ export function Styleguide() {
               />
               <EmptyState
                 compact
-                icon={<TrendIcon size={20} />}
+                icon={<Icons.TrendIcon size={20} />}
                 title="Ask anything about your data"
                 description="An empty beacon prompt."
               />
@@ -271,7 +351,11 @@ export function Styleguide() {
           </div>
         </Section>
 
-        <Section title="Chart micro-demo">
+        <Section title="Charts (Recharts)">
+          <ChartRenderer spec={SAMPLE_CHART} />
+          <p className="mt-3 mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+            Chart palette
+          </p>
           <div className="flex items-end gap-1.5">
             {pct.map((h, i) => (
               <div
@@ -283,8 +367,98 @@ export function Styleguide() {
             ))}
           </div>
           <p className="mt-2 text-[11px] text-muted">
-            Conventional look for charts — see ChartRenderer for full Recharts maps.
+            Toolbar: show/hide the data table, export CSV, export PNG. The table reuses the sortable,
+            paginated ResultTable.
           </p>
+        </Section>
+
+        <Section title="Toast notifications">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => show({ tone: 'info', title: 'Dataset ready', description: 'sales.csv · 2,000 rows' })}
+            >
+              Info
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => show({ tone: 'success', title: 'Imported sales.csv' })}
+            >
+              Success
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() =>
+                show({
+                  tone: 'error',
+                  title: 'Stream interrupted',
+                  description: 'The backend closed the connection.',
+                  action: {
+                    label: 'Retry',
+                    onClick: () => show({ tone: 'success', title: 'Reconnected', description: 'Retry worked.' }),
+                  },
+                })
+              }
+            >
+              Error + Retry
+            </Button>
+          </div>
+          <p className="mt-3 text-[11px] text-muted">
+            Fixed bottom-right, auto-dismiss after 6s, <span className="font-mono">role=&quot;alert&quot;</span>.
+            Errors can carry a retry action used by chat, uploads and dataset refreshes.
+          </p>
+        </Section>
+
+        <Section title="Avatars & icons">
+          <div className="flex items-center gap-2">
+            <Avatar name="Ada Analyst" />
+            <Avatar name="Rev Ops" />
+            <Avatar name="Q" />
+            <Avatar name="" />
+          </div>
+          <div className="mt-4 grid grid-cols-6 gap-2 sm:grid-cols-10">
+            {ICON_LIST.map(([name, Icon]) => (
+              <span
+                key={name}
+                title={name}
+                className="flex h-9 w-9 items-center justify-center rounded-input border border-line bg-sunken/60 text-muted"
+              >
+                <Icon size={16} />
+              </span>
+            ))}
+          </div>
+        </Section>
+
+        <Section title="Final answer (tabs only with 2+ parts)">
+          <FinalAnswerView final={SAMPLE_FINAL} onSuggestion={() => undefined} />
+          <p className="mt-3 text-[11px] text-muted">
+            One part (SQL) renders bare — no tab strip. Two or more parts (SQL + reasoning, charts,
+            tables) switch to <span className="font-mono">&lt;Tabs&gt;</span> automatically, and
+            follow-up chips appear whenever the backend suggests them.
+          </p>
+        </Section>
+
+        <Section title="Suggestion chips">
+          <SuggestionChips onPick={() => undefined} />
+        </Section>
+
+        <Section title="Datasets: card, upload, preview">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-3">
+              <DatasetCard dataset={SAMPLE_DATASET} onPreview={setPreviewData} onRemove={() => undefined} />
+              <UploadZone sessionId="demo" onUploaded={() => undefined} onSample={() => undefined} />
+            </div>
+            <div className="space-y-3">
+              <p className="text-xs text-muted">
+                The upload zone accepts drops and click-to-browse; sample buttons preload the bundled CSVs.
+                The card opens the preview modal (profile table, sample rows, quality badges). In this demo
+                the callbacks are stubbed, so uploads do not run.
+              </p>
+              <Button variant="soft" onClick={() => setPreviewData(SAMPLE_DATASET)}>
+                Open preview modal
+              </Button>
+            </div>
+          </div>
         </Section>
 
         <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Modal demo">
@@ -292,6 +466,7 @@ export function Styleguide() {
             Focus trapped, Escape closes, backdrop click closes. Used by PreviewModal for dataset previews.
           </p>
         </Modal>
+        <PreviewModal dataset={previewData} onClose={() => setPreviewData(null)} />
       </div>
     </div>
   )

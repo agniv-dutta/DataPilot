@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { chatSync } from '../../api'
 import type { ChatEvent, ChatFinalEvent } from '../../api/types'
 import { useChatStream } from '../../hooks/useChatStream'
@@ -26,10 +26,43 @@ export function ChatArea({ sessionId }: { sessionId: string | null }) {
   const [pendingId, setPendingId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const pinnedRef = useRef(true)
+  const retryRef = useRef<() => void>(() => undefined)
+  // Smooth scrolling fires intermediate scroll events with the list far from
+  // the bottom; ignore those so programmatic follow never unpins itself.
+  // The window ends on `scrollend` (animation truly finished) with a timeout
+  // fallback for browsers without it, then re-syncs pin state to the position
+  // actually reached.
+  const followingRef = useRef(false)
+  const followTimer = useRef<number | null>(null)
   const [pinned, setPinned] = useState(true)
   const { show } = useToast()
 
+  const endFollow = useCallback(() => {
+    followingRef.current = false
+    if (followTimer.current !== null) {
+      window.clearTimeout(followTimer.current)
+      followTimer.current = null
+    }
+    const el = scrollRef.current
+    if (el) {
+      const near = el.scrollHeight - el.scrollTop - el.clientHeight < 64
+      pinnedRef.current = near
+      setPinned(near)
+    }
+  }, [])
+
+  const followDown = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    followingRef.current = true
+    if (followTimer.current !== null) window.clearTimeout(followTimer.current)
+    followTimer.current = window.setTimeout(endFollow, 1200)
+    el.addEventListener('scrollend', () => endFollow(), { once: true })
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }, [endFollow])
+
   const handleScroll = () => {
+    if (followingRef.current) return
     const el = scrollRef.current
     if (!el) return
     const near = el.scrollHeight - el.scrollTop - el.clientHeight < 64
@@ -40,13 +73,13 @@ export function ChatArea({ sessionId }: { sessionId: string | null }) {
   const jumpToLatest = () => {
     pinnedRef.current = true
     setPinned(true)
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+    followDown()
   }
 
   useEffect(() => {
     if (!pinnedRef.current) return
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, events, streaming])
+    followDown()
+  }, [messages, events, streaming, followDown])
 
   const syncFallback = async (message: string): Promise<ChatEvent> => {
     const res = await chatSync(sessionId ?? '', message)
@@ -70,6 +103,24 @@ export function ChatArea({ sessionId }: { sessionId: string | null }) {
     void send(message, () => syncFallback(message))
   }
 
+  // Re-send the last prompt after dropping its failed reply, so retry never
+  // duplicates the user's bubble. Kept in a ref so error effects can call the
+  // latest closure without re-firing toasts.
+  const retryLast = () => {
+    if (!sessionId || streaming) return
+    const last = messages[messages.length - 1]
+    const user = messages[messages.length - 2]
+    if (last?.role !== 'assistant' || last.final || user?.role !== 'user') return
+    setMessages((prev) => {
+      const next = [...prev]
+      if (next[next.length - 1]?.id === last.id) next.pop()
+      if (next[next.length - 1]?.id === user.id) next.pop()
+      return next
+    })
+    sendMessage(user.content)
+  }
+  retryRef.current = retryLast
+
   // Fold streamed events into the pending assistant message.
   useEffect(() => {
     if (!pendingId) return
@@ -87,16 +138,29 @@ export function ChatArea({ sessionId }: { sessionId: string | null }) {
           : m,
       ),
     )
+    if (errorEvent && !final && 'message' in errorEvent) {
+      show({
+        tone: 'error',
+        title: 'Could not answer that',
+        description: errorEvent.message,
+        action: { label: 'Retry', onClick: () => retryRef.current() },
+      })
+    }
     if (final || errorEvent) {
       setStreaming(false)
       setPendingId(null)
       reset()
     }
-  }, [events, pendingId, reset])
+  }, [events, pendingId, reset, show])
 
   useEffect(() => {
     if (error) {
-      show({ tone: 'error', title: 'Stream interrupted', description: error })
+      show({
+        tone: 'error',
+        title: 'Stream interrupted',
+        description: error,
+        action: { label: 'Retry', onClick: () => retryRef.current() },
+      })
       setStreaming(false)
       setPendingId(null)
     }

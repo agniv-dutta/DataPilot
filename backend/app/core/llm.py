@@ -85,6 +85,7 @@ class LLMProvider(ABC):
         messages: list[Message],
         tools: list[Json] | None = None,
         system: str | None = None,
+        on_delta: Callable[[str], None] | None = None,
     ) -> LLMResponse: ...
 
     @abstractmethod
@@ -117,6 +118,7 @@ class GroqProvider(LLMProvider):
         messages: list[Message],
         tools: list[Json] | None = None,
         system: str | None = None,
+        on_delta: Callable[[str], None] | None = None,
     ) -> LLMResponse:
         from groq import Groq
 
@@ -146,35 +148,104 @@ class GroqProvider(LLMProvider):
                 }
                 for t in tools
             ]
-        try:
-            response = client.chat.completions.create(**kwargs)
-        except Exception as exc:  # noqa: BLE001
-            recovered = _recover_tool_use_failure(exc, tools or [])
-            if recovered is not None:
-                logger.warning(
-                    "recovered invalid tool call",
-                    extra={"event": f"{self.name}:tool_use_failed"},
-                )
-                return recovered
-            raise LLMError(f"Groq request failed: {exc}") from exc
-
-        choice = response.choices[0]
-        message = choice.message
-        tool_calls: list[ToolCall] = []
-        for tc in message.tool_calls or []:
+        if on_delta is None:
             try:
-                args = json.loads(tc.function.arguments or "{}")
-            except json.JSONDecodeError:
-                args = {"_raw": tc.function.arguments}
-            tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, input=args))
-        usage = response.usage
-        return LLMResponse(
-            text=message.content or "",
-            tool_calls=tool_calls,
-            stop_reason="tool_use" if tool_calls else (choice.finish_reason or "stop"),
-            input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
-            output_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                response = client.chat.completions.create(**kwargs)
+            except Exception as exc:  # noqa: BLE001
+                return _handle_groq_failure(exc, tools or [])
+            return _from_completion(response)
+
+        # Streaming path: forward content deltas so the SSE layer can emit
+        # `token` events while the model is still writing.
+        try:
+            stream = client.chat.completions.create(**kwargs, stream=True)
+            return _from_stream(stream, on_delta)
+        except Exception as exc:  # noqa: BLE001
+            return _handle_groq_failure(exc, tools or [])
+
+
+def _handle_groq_failure(exc: Exception, tools: list[Json]) -> LLMResponse:
+    """Recover from ``tool_use_failed`` or raise a clean LLMError."""
+    recovered = _recover_tool_use_failure(exc, tools)
+    if recovered is not None:
+        logger.warning(
+            "recovered invalid tool call",
+            extra={"event": "groq:tool_use_failed"},
         )
+        return recovered
+    raise LLMError(f"Groq request failed: {exc}") from exc
+
+
+def _from_completion(response: Any) -> LLMResponse:
+    choice = response.choices[0]
+    message = choice.message
+    tool_calls: list[ToolCall] = []
+    for tc in message.tool_calls or []:
+        try:
+            args = json.loads(tc.function.arguments or "{}")
+        except json.JSONDecodeError:
+            args = {"_raw": tc.function.arguments}
+        tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, input=args))
+    usage = response.usage
+    return LLMResponse(
+        text=message.content or "",
+        tool_calls=tool_calls,
+        stop_reason="tool_use" if tool_calls else (choice.finish_reason or "stop"),
+        input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+        output_tokens=getattr(usage, "completion_tokens", 0) or 0,
+    )
+
+
+def _from_stream(stream: Any, on_delta: Callable[[str], None]) -> LLMResponse:
+    """Consume a streaming completion, forwarding content deltas as they arrive.
+
+    Tool-call arguments arrive fragmented across chunks, so they are
+    accumulated and parsed once at the end; content is forwarded immediately
+    so the UI can render tokens while the model is still generating.
+    """
+    parts: list[str] = []
+    tool_acc: dict[int, Json] = {}
+    finish = "stop"
+    for chunk in stream:
+        if not getattr(chunk, "choices", None):
+            continue
+        choice = chunk.choices[0]
+        delta = choice.delta
+        if delta is not None:
+            content = getattr(delta, "content", None)
+            if content:
+                parts.append(content)
+                on_delta(content)
+            for tc in delta.tool_calls or []:
+                slot = tool_acc.setdefault(tc.index or 0, {"id": "", "name": "", "args": ""})
+                if tc.id:
+                    slot["id"] = tc.id
+                fn = tc.function
+                if fn is not None:
+                    if fn.name:
+                        slot["name"] = fn.name
+                    if fn.arguments:
+                        slot["args"] = str(slot.get("args", "")) + fn.arguments
+        if choice.finish_reason:
+            finish = choice.finish_reason
+    tool_calls: list[ToolCall] = []
+    for key in sorted(tool_acc):
+        slot = tool_acc[key]
+        raw_args = str(slot.get("args", ""))
+        try:
+            args: Json = json.loads(raw_args or "{}")
+        except json.JSONDecodeError:
+            args = {"_raw": raw_args}
+        name = str(slot.get("name", ""))
+        if not name:
+            continue
+        call_id = str(slot.get("id", "")) or f"call_{uuid4().hex}"
+        tool_calls.append(ToolCall(id=call_id, name=name, input=args))
+    return LLMResponse(
+        text="".join(parts),
+        tool_calls=tool_calls,
+        stop_reason="tool_use" if tool_calls else (finish or "stop"),
+    )
 
 
 def _allows_null(spec: object) -> bool:
@@ -283,6 +354,7 @@ class MockProvider(LLMProvider):
         messages: list[Message],
         tools: list[Json] | None = None,
         system: str | None = None,
+        on_delta: Callable[[str], None] | None = None,
     ) -> LLMResponse:
         self.calls.append({"messages": len(messages), "tools": len(tools or []), "system": system})
         if not self.responses:
@@ -311,6 +383,7 @@ def complete(
     tools: list[Json] | None = None,
     system: str | None = None,
     provider: LLMProvider | None = None,
+    on_delta: Callable[[str], None] | None = None,
 ) -> LLMResponse:
     p = provider or get_provider()
     if not p.is_configured() and p.name != "mock":
@@ -319,7 +392,7 @@ def complete(
             "(get one at https://console.groq.com/keys)."
         )
     logger.info("llm call", extra={"event": f"{p.name}:{p.model}"})
-    return p.chat(messages, tools=tools, system=system)
+    return p.chat(messages, tools=tools, system=system, on_delta=on_delta)
 
 
 StreamCallback = Callable[[str, Json], None]

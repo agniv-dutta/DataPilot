@@ -67,6 +67,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 {t.description ? (
                   <p className="mt-0.5 text-xs text-muted">{t.description}</p>
                 ) : null}
+                {t.action ? (
+                  <button
+                    onClick={() => {
+                      t.action?.onClick()
+                      dismiss(t.id)
+                    }}
+                    className="mt-1.5 rounded-input border border-iris/35 bg-surface px-2 py-0.5 text-[11px] font-semibold text-iris-active transition-colors hover:bg-iris-soft"
+                  >
+                    {t.action.label}
+                  </button>
+                ) : null}
               </div>
               <button
                 aria-label="Dismiss"

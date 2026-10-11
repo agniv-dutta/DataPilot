@@ -84,10 +84,21 @@ class ChartSpec(BaseModel):
 # ---------------------------------------------------------------- chat / agent
 
 
+class AnomalyDetail(BaseModel):
+    """One flagged value with the range it was expected to fall inside."""
+
+    column: str
+    value: float | None = None
+    expected_low: float | None = None
+    expected_high: float | None = None
+    basis: Literal["iqr", "zscore"]
+
+
 class AnomalyRow(BaseModel):
     row_index: int
     reasons: list[str]
     values: dict[str, Any]
+    details: list[AnomalyDetail] = Field(default_factory=list)
 
 
 class AnomalyReport(BaseModel):

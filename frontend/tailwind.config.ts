@@ -48,6 +48,11 @@ export default {
 
         line: 'rgb(var(--line-rgb) / 0.10)',
         'line-strong': 'rgb(var(--line-rgb) / 0.18)',
+
+        // Fixed (theme-independent) inverted surfaces — see tokens.css.
+        'code-bg': rgb('--code-bg-rgb'),
+        'code-fg': rgb('--code-fg-rgb'),
+        scrim: rgb('--scrim-rgb'),
       },
       fontFamily: {
         display: ['var(--font-display)'],

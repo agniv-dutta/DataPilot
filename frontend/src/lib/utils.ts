@@ -49,10 +49,15 @@ export function formatCompact(value: number): string {
 }
 
 export function displayCell(value: unknown, max = 60): string {
-  if (value === null || value === undefined) return '—'
+  if (value === null || value === undefined) return '-'
   if (typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return String(value)
+    // Group thousands and cap float noise (40463607.39000004 -> 40,463,607.39).
+    return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value)
+  }
   const s = String(value)
-  return s.length > max ? `${s.slice(0, max)}…` : s
+  return s.length > max ? `${s.slice(0, max)}.` : s
 }
 
 export function downloadText(filename: string, text: string, type = 'text/plain'): void {

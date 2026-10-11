@@ -74,16 +74,16 @@ export function CodeBlock({
     downloadText(`${title ?? 'code'}.${language === 'python' ? 'py' : language}`, code)
 
   return (
-    <div className="overflow-hidden rounded-input border border-line bg-ink text-left font-mono text-xs">
-      <div className="flex items-center justify-between border-b border-canvas/10 px-3 py-1.5">
-        <span className="text-[11px] uppercase tracking-wide text-canvas/60">
+    <div className="overflow-hidden rounded-input border border-line bg-code-bg text-left font-mono text-xs">
+      <div className="flex items-center justify-between border-b border-code-fg/10 px-3 py-1.5">
+        <span className="text-[11px] uppercase tracking-wide text-code-fg/60">
           {title ?? language}
         </span>
         <div className="flex items-center gap-0.5">
           <IconButton
             aria-label="Download code"
             onClick={download}
-            className="h-6 w-6 text-canvas/70 hover:bg-canvas/10 hover:text-canvas"
+            className="h-6 w-6 text-code-fg/70 hover:bg-code-fg/10 hover:text-code-fg"
           >
             <DownloadIcon size={14} />
           </IconButton>
@@ -93,7 +93,7 @@ export function CodeBlock({
               'inline-flex h-6 items-center gap-1 rounded px-2 text-[11px] font-medium transition-colors',
               copied
                 ? 'bg-leaf/20 text-leaf'
-                : 'text-canvas/70 hover:bg-canvas/10 hover:text-canvas',
+                : 'text-code-fg/70 hover:bg-code-fg/10 hover:text-code-fg',
             )}
           >
             {copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
@@ -102,7 +102,7 @@ export function CodeBlock({
         </div>
       </div>
       <pre
-        className="scrollbar-thin overflow-auto p-3 leading-relaxed text-canvas/90"
+        className="scrollbar-thin overflow-auto p-3 leading-relaxed text-code-fg/90"
         style={maxHeight ? { maxHeight } : undefined}
       >
         <code>

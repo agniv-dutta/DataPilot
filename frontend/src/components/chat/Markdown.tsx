@@ -35,7 +35,7 @@ export function InlineCode({ children, className }: { children?: React.ReactNode
   const isBlock = className?.includes('language-')
   if (isBlock) {
     return (
-      <pre className="my-2 overflow-x-auto rounded-input border border-line bg-ink p-3 font-mono text-xs text-canvas/90">
+      <pre className="my-2 overflow-x-auto rounded-input border border-code-fg/10 bg-code-bg p-3 font-mono text-xs text-code-fg/90">
         <code>{children}</code>
       </pre>
     )

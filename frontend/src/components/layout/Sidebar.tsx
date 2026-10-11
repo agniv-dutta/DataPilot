@@ -38,7 +38,7 @@ export function Sidebar({
         <button
           aria-label="Close sidebar"
           onClick={onClose}
-          className="fixed inset-0 z-30 bg-ink/30 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-30 bg-scrim/30 backdrop-blur-sm lg:hidden"
         />
       )}
       <aside

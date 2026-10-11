@@ -8,6 +8,9 @@ requires-python = ">=3.11"
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
 filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+  "e2e: end-to-end tests against a running backend (enable with DP_E2E=1)",
+]
 
 [tool.ruff]
 line-length = 100

@@ -17,7 +17,7 @@ export function Modal({ open, onClose, title, children, size = 'lg', footer }: M
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-ink/45 backdrop-blur-sm data-[state=open]:animate-fade-in" />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-scrim/45 backdrop-blur-sm data-[state=open]:animate-fade-in" />
         <Dialog.Content
           aria-describedby={undefined}
           className={cn(
@@ -64,7 +64,7 @@ export function Drawer({
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-ink/45 backdrop-blur-sm data-[state=open]:animate-fade-in" />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-scrim/45 backdrop-blur-sm data-[state=open]:animate-fade-in" />
         <Dialog.Content
           aria-describedby={undefined}
           className={cn(

@@ -128,6 +128,10 @@ def test_agent_detect_anomalies_tool(mock_llm: MockProvider) -> None:
     report = anomaly_events[0].data["anomaly"]
     assert report["flagged_count"] >= 1
     assert "σ" in report["rows"][0]["reasons"][0] or "sigma" in report["rows"][0]["reasons"][0]
+    detail = report["rows"][0]["details"][0]
+    assert detail["column"] == "revenue"
+    assert detail["basis"] == "zscore"
+    assert detail["value"] > detail["expected_high"] or detail["value"] < detail["expected_low"]
 
 
 def test_chat_sync_endpoint(client: TestClient, mock_llm: MockProvider) -> None:

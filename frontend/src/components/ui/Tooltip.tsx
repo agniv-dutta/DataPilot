@@ -24,13 +24,13 @@ export function Tooltip({
           side={side}
           sideOffset={6}
           className={cn(
-            'z-[70] max-w-xs rounded-input border border-line bg-ink px-2.5 py-1.5 text-xs font-medium text-canvas shadow-lift',
+            'z-[70] max-w-xs rounded-input border border-code-fg/15 bg-code-bg px-2.5 py-1.5 text-xs font-medium text-code-fg shadow-lift',
             'data-[state=delayed-open]:animate-fade-in',
             className,
           )}
         >
           {label}
-          <TooltipPrimitive.Arrow className="fill-ink" width={10} height={5} />
+          <TooltipPrimitive.Arrow className="fill-code-bg" width={10} height={5} />
         </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>
     </TooltipPrimitive.Root>

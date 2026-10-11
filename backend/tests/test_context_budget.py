@@ -42,6 +42,7 @@ class RecordingProvider(LLMProvider):
         messages: list[Message],
         tools: list[dict] | None = None,
         system: str | None = None,
+        on_delta: object | None = None,
     ) -> LLMResponse:
         self.requests.append([m.to_dict() for m in messages])
         return self.responses.pop(0) if self.responses else LLMResponse(text="{}")

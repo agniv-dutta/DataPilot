@@ -47,6 +47,7 @@ export function InputBox({
           'pointer-events-auto mx-auto flex w-full max-w-3xl items-end gap-2 rounded-frame border border-line bg-surface/90 p-2 pl-3 shadow-lift backdrop-blur',
           'transition-colors focus-within:border-iris/40',
         )}
+        aria-busy={streaming}
       >
         <textarea
           ref={ref}
@@ -60,7 +61,7 @@ export function InputBox({
             }
           }}
           disabled={disabled}
-          placeholder={disabled ? 'Load a dataset to begin…' : placeholder}
+          placeholder={disabled ? 'Starting your session…' : placeholder}
           aria-label="Message"
           className="scrollbar-thin max-h-[180px] min-h-[40px] flex-1 resize-none bg-transparent py-2 text-sm text-ink placeholder:text-muted focus:outline-none disabled:cursor-not-allowed"
         />
@@ -90,7 +91,13 @@ export function InputBox({
         )}
       </div>
       <p className="pointer-events-none mt-1.5 flex items-center justify-center gap-1 text-[11px] text-muted">
-        <Kbd>Enter</Kbd> to send · <Kbd>Shift</Kbd>+<Kbd>Enter</Kbd> for a new line
+        {streaming ? (
+          'Generating an answer — press Stop to interrupt.'
+        ) : (
+          <>
+            <Kbd>Enter</Kbd> to send · <Kbd>Shift</Kbd>+<Kbd>Enter</Kbd> for a new line
+          </>
+        )}
       </p>
     </div>
   )

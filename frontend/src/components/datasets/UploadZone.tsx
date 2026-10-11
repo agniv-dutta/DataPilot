@@ -24,6 +24,7 @@ export function UploadZone({
   onSample: (name: string) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const lastFilesRef = useRef<File[]>([])
   const [dragging, setDragging] = useState(false)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<UploadProgress[]>([])
@@ -35,6 +36,7 @@ export function UploadZone({
     if (csvFiles.length !== files.length) {
       show({ tone: 'error', title: 'Only .csv files are supported' })
     }
+    lastFilesRef.current = csvFiles
     setBusy(true)
     setProgress(csvFiles.map((f) => ({ name: f.name, percent: 0, status: 'uploading' })))
     try {
@@ -55,7 +57,15 @@ export function UploadZone({
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Upload failed'
       setProgress((prev) => prev.map((p) => ({ ...p, status: 'error', error: message })))
-      show({ tone: 'error', title: 'Upload failed', description: message })
+      show({
+        tone: 'error',
+        title: 'Upload failed',
+        description: message,
+        action: {
+          label: 'Retry',
+          onClick: () => void handleFiles(lastFilesRef.current),
+        },
+      })
     } finally {
       setBusy(false)
     }

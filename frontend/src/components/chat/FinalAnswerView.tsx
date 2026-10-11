@@ -14,8 +14,35 @@ export function FinalAnswerView({
   final: FinalAnswer
   onSuggestion?: (q: string) => void
 }) {
-  const hasReasoning = final.reasoning.length > 0
-  const hasParts = Boolean(final.sql) || Boolean(final.pandas_code) || hasReasoning
+  const parts: Array<{ id: string; label: string; content: React.ReactNode }> = [
+    ...(final.sql ? [{ id: 'sql', label: 'SQL', content: <CodeBlock code={final.sql} language="sql" title="SQL" /> }] : []),
+    ...(final.pandas_code
+      ? [
+          {
+            id: 'pandas',
+            label: 'Pandas',
+            content: <CodeBlock code={final.pandas_code} language="python" title="Pandas" />,
+          },
+        ]
+      : []),
+    ...(final.reasoning.length > 0
+      ? [
+          {
+            id: 'reasoning',
+            label: 'Reasoning',
+            content: (
+              <ol className="list-decimal space-y-1.5 pl-4 text-xs text-muted">
+                {final.reasoning.map((step, i) => (
+                  <li key={i}>
+                    <span className="font-medium text-ink">Step {i + 1}.</span> {step}
+                  </li>
+                ))}
+              </ol>
+            ),
+          },
+        ]
+      : []),
+  ]
 
   return (
     <div className="space-y-3">
@@ -44,41 +71,12 @@ export function FinalAnswerView({
         <AnomalyList key={`anomaly-${i}`} report={report} />
       ))}
 
-      {hasParts && (
-        <Tabs
-          items={[
-            ...(final.sql
-              ? [{ id: 'sql', label: 'SQL', content: <CodeBlock code={final.sql} language="sql" title="SQL" /> }]
-              : []),
-            ...(final.pandas_code
-              ? [
-                  {
-                    id: 'pandas',
-                    label: 'Pandas',
-                    content: <CodeBlock code={final.pandas_code} language="python" title="Pandas" />,
-                  },
-                ]
-              : []),
-            ...(hasReasoning
-              ? [
-                  {
-                    id: 'reasoning',
-                    label: 'Reasoning',
-                    content: (
-                      <ol className="list-decimal space-y-1.5 pl-4 text-xs text-muted">
-                        {final.reasoning.map((step, i) => (
-                          <li key={i}>
-                            <span className="font-medium text-ink">Step {i + 1}.</span> {step}
-                          </li>
-                        ))}
-                      </ol>
-                    ),
-                  },
-                ]
-              : []),
-          ]}
-        />
-      )}
+      {/* Tab chrome only earns its keep with 2+ parts; a lone part renders bare. */}
+      {parts.length === 1 ? (
+        parts[0]?.content
+      ) : parts.length > 1 ? (
+        <Tabs items={parts} />
+      ) : null}
 
       {final.follow_up_suggestions.length > 0 && onSuggestion && (
         <div className="flex flex-wrap gap-2 pt-1">

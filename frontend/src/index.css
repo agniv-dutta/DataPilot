@@ -119,9 +119,11 @@
     padding: 1px;
     border-radius: inherit;
     background: var(--grad-hero);
+    /* Mask fill is a full-alpha colour, so ink resolves the ring identically
+       without a pure-black literal. */
     -webkit-mask:
-      linear-gradient(#000 0 0) content-box,
-      linear-gradient(#000 0 0);
+      linear-gradient(rgb(var(--ink-rgb)) 0 0) content-box,
+      linear-gradient(rgb(var(--ink-rgb)) 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
     opacity: 0.55;

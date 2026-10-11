@@ -5,6 +5,8 @@ export interface Toast {
   title: string
   description?: string
   tone: 'info' | 'error' | 'success'
+  /** Optional inline action (e.g. Retry) rendered inside the toast. */
+  action?: { label: string; onClick: () => void }
 }
 
 export interface ToastContextValue {
