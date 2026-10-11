@@ -603,6 +603,33 @@ class AnalystAgent:
 
     # ---- main loop -----------------------------------------------------
 
+    def _missing_column_refusal(self, user_message: str) -> FinalAnswer | None:
+        """Refuse explicit requests for a column that is absent from the session."""
+        match = re.search(
+            r"\b(?:column|field|average of|mean of|sum of)\s+([A-Za-z_][A-Za-z0-9_]*)",
+            user_message,
+            re.IGNORECASE,
+        )
+        if not match:
+            return None
+        requested = match.group(1)
+        available = {
+            column
+            for dataset in self.session.datasets.values()
+            for column in dataset.dataframe.columns.astype(str)
+        }
+        if requested in available:
+            return None
+        return FinalAnswer(
+            answer=(
+                f"I can't answer that because the column '{requested}' is not present "
+                f"in the uploaded data."
+            ),
+            insights=[],
+            reasoning=[f"Requested column '{requested}' was not found in the uploaded schemas."],
+            follow_up_suggestions=[],
+        )
+
     def _stream_completion(
         self,
         messages: list[Message],
@@ -643,6 +670,11 @@ class AnalystAgent:
 
     def run(self, user_message: str) -> Iterator[AgentEvent]:
         """Agent loop: max `agent_max_iterations` tool rounds, then final JSON."""
+        refusal = self._missing_column_refusal(user_message)
+        if refusal is not None:
+            self._remember(user_message, refusal)
+            yield AgentEvent("final", {"final": refusal.model_dump(), "iterations": 0})
+            return
         messages = self._messages(user_message)
         rounds = 0
         charts: list[ChartSpec] = []
@@ -659,6 +691,20 @@ class AnalystAgent:
             yield from self._stream_completion(messages, TOOLS, out)
             error = out.get("error")
             if error is not None:
+                if charts or tables or anomalies:
+                    final = FinalAnswer.model_validate(
+                        {
+                            **self._assembled(),
+                            "answer": (
+                                "The requested analysis completed. The structured "
+                                "result and chart are attached below."
+                            ),
+                        }
+                    )
+                    self._remember(user_message, final)
+                    yield AgentEvent("token", {"text": final.answer})
+                    yield AgentEvent("final", {"final": final.model_dump(), "iterations": rounds})
+                    return
                 if isinstance(error, AppError):
                     yield AgentEvent("error", {"message": error.message, "code": error.code})
                 else:

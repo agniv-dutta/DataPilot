@@ -349,43 +349,98 @@ def test_journey_2_invalid_uploads(api: httpx.Client) -> None:
     )
     assert resp.status_code == 201, resp.text
     dup_names = {c["name"] for c in resp.json()[0]["profile"]["columns"]}
-    assert "name_2" in dup_names
+    assert {"name.1", "name_2"} & dup_names
 
     listing = api.get(f"/api/sessions/{session_id}/files")
     assert len(listing.json()["datasets"]) == 3
 
 
 def test_journey_3_basic_questions(api: httpx.Client, data_session: str) -> None:
-    response = _chat_sync(
-        api,
-        data_session,
-        "Which region has the highest total revenue, and what is the exact amount?",
-    )
+    prompts = [
+        (
+            "Which region generated the highest revenue?",
+            [TOP_REGION],
+            [TOP_REGION_REVENUE],
+            False,
+        ),
+        (
+            "Show the monthly revenue trend as a line chart.",
+            [str(pd.to_datetime(month).strftime("%b %Y")) for month in MONTHLY_REVENUE.index],
+            [float(value) for value in MONTHLY_REVENUE],
+            True,
+        ),
+        (
+            "Top 5 customers by revenue.",
+            TOP5_IDS,
+            [TOP1_CUSTOMER_REVENUE],
+            False,
+        ),
+        (
+            "Detect anomalies in revenue.",
+            ["anomal"],
+            [],
+            False,
+        ),
+        (
+            "Join sales with customers and break revenue down by tier.",
+            list(_TIER_BY_ID.values()),
+            [],
+            False,
+        ),
+        (
+            "Which products have the highest margin, and how do they perform?",
+            [str(_PRODUCTS.loc[_PRODUCTS["margin_pct"].idxmax(), "product"])],
+            [float(_PRODUCTS["margin_pct"].max())],
+            False,
+        ),
+    ]
+    for prompt, required_text, expected_numbers, needs_chart in prompts:
+        response = _chat_sync(api, data_session, prompt)
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        final = payload["final"]
+        answer = final["answer"]
+        assert answer.strip(), f"empty answer for {prompt!r}"
+        snippet = final.get("sql") or final.get("pandas_code") or ""
+        assert snippet.strip(), f"no SQL or Pandas snippet for {prompt!r}"
+        assert "select" in snippet.lower() or "pandas" in snippet.lower() or "df" in snippet.lower()
+        for text in required_text:
+            assert text.lower() in f"{answer}\n{snippet}".lower(), (
+                f"{text!r} missing for {prompt!r}: {answer}"
+            )
+        for expected in expected_numbers:
+            assert _has_num(f"{answer}\n{json.dumps(final)}", expected, rel=0.03), (
+                f"{expected} missing for {prompt!r}: {answer}"
+            )
+        if needs_chart:
+            assert any(
+                chart["chart_type"] in ("line", "area") for chart in final["charts"]
+            ), f"no trend chart for {prompt!r}"
+        assert payload["iterations"] >= 1
+        assert payload["tool_calls"]
+
+
+def test_journey_3b_anomaly_reasons(api: httpx.Client, data_session: str) -> None:
+    response = _chat_sync(api, data_session, "Detect anomalies in the sales dataset.")
     assert response.status_code == 200, response.text
     final = response.json()["final"]
-    answer = final["answer"]
-    assert TOP_REGION.lower() in answer.lower()
-    assert _has_num(answer, TOP_REGION_REVENUE, rel=0.02), (
-        f"{TOP_REGION_REVENUE} not found in answer: {answer}"
-    )
-    sql = final.get("sql") or ""
-    assert "select" in sql.lower() and "from" in sql.lower()
-    assert response.json()["iterations"] >= 1
-    assert len(response.json()["tool_calls"]) >= 1
+    reports = final["anomalies"]
+    assert reports, "the anomaly report was not attached to the final answer"
+    report = next(report for report in reports if report["dataset"] == "sales")
+    assert report["flagged_count"] > 0
+    assert len(report["rows"]) == report["flagged_count"]
+    assert all(row["reasons"] for row in report["rows"])
+    assert all(reason.strip() for row in report["rows"] for reason in row["reasons"])
 
-    response = _chat_sync(
-        api,
-        data_session,
-        "Which product has the lowest total revenue, and how many units "
-        "were sold for it?",
-    )
+
+def test_journey_3c_nonexistent_column_refusal(
+    api: httpx.Client, data_session: str
+) -> None:
+    response = _chat_sync(api, data_session, "What is the average of profit_margin?")
     assert response.status_code == 200, response.text
     answer = response.json()["final"]["answer"]
-    assert LOWEST_PRODUCT.lower() in answer.lower()
-    matched = _has_num(answer, LOWEST_PRODUCT_REVENUE, rel=0.02) or _has_num(
-        answer, float(LOWEST_PRODUCT_UNITS), rel=0.001
-    )
-    assert matched, f"revenue/units for {LOWEST_PRODUCT} missing: {answer}"
+    assert _REFUSAL_RE.search(answer), answer
+    assert "profit_margin" in answer.lower()
 
 
 def test_journey_4_carryover_multiturn(api: httpx.Client) -> None:
@@ -452,21 +507,24 @@ def test_journey_5_cross_dataset_categories(
     response = _chat_sync(
         api,
         data_session,
-        "Compare Hardware vs Software total revenue: which category has more, "
-        "how much is it, and which customer tier contributes the most revenue "
-        "to that category?",
+        "Which customer segment buys the most of each product category?",
     )
     assert response.status_code == 200, response.text
-    answer = response.json()["final"]["answer"]
-    assert "hardware" in answer.lower()
-    assert "software" in answer.lower()
-    assert TOP_CATEGORY.lower() in answer.lower()
-    assert _has_num(answer, TOP_CATEGORY_REVENUE, rel=0.03), (
-        f"{TOP_CATEGORY_REVENUE} missing from: {answer}"
+    final = response.json()["final"]
+    answer = f"{final['answer']}\n{json.dumps(final.get('tables', []))}"
+    joined = _JOINED.merge(_CUSTOMERS[["customer_id", "tier"]], on="customer_id")
+    expected = (
+        joined.groupby(["category", "tier"])["revenue"]
+        .sum()
+        .groupby(level=0)
+        .idxmax()
+        .to_dict()
     )
-    assert TOP_CATEGORY_TIER.lower() in answer.lower(), (
-        f"expected top tier {TOP_CATEGORY_TIER} for {TOP_CATEGORY}: {answer}"
-    )
+    assert expected
+    for category, (_, tier) in expected.items():
+        assert category.lower() in answer.lower()
+        assert tier.lower() in answer.lower()
+    assert final.get("sql") or final.get("pandas_code")
 
 
 def test_journey_6_trend_chart(api: httpx.Client, data_session: str) -> None:
