@@ -555,7 +555,7 @@ class AnalystAgent:
                     )
 
         rows: list[AnomalyRow] = []
-        ordered = sorted(flags, key=lambda r: (-sev.get(r, 0.0), r))[:100]
+        ordered = sorted(flags, key=lambda r: (-sev.get(r, 0.0), r))
         for row_idx in ordered:
             values = {str(c): _cell(df.iloc[row_idx][c]) for c in list(df.columns)[:12]}
             rows.append(
@@ -613,6 +613,8 @@ class AnalystAgent:
         if not match:
             return None
         requested = match.group(1)
+        if requested.lower() in {"of", "the", "row", "data", "records"}:
+            return None
         available = {
             column
             for dataset in self.session.datasets.values()

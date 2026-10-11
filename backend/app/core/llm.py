@@ -152,6 +152,12 @@ class GroqProvider(LLMProvider):
             try:
                 response = client.chat.completions.create(**kwargs)
             except Exception as exc:  # noqa: BLE001
+                if _is_tool_parse_failure(exc):
+                    try:
+                        response = client.chat.completions.create(**kwargs)
+                    except Exception as retry_exc:  # noqa: BLE001
+                        return _handle_groq_failure(retry_exc, tools or [])
+                    return _from_completion(response)
                 return _handle_groq_failure(exc, tools or [])
             return _from_completion(response)
 
@@ -161,7 +167,18 @@ class GroqProvider(LLMProvider):
             stream = client.chat.completions.create(**kwargs, stream=True)
             return _from_stream(stream, on_delta)
         except Exception as exc:  # noqa: BLE001
+            if _is_tool_parse_failure(exc):
+                try:
+                    stream = client.chat.completions.create(**kwargs, stream=True)
+                    return _from_stream(stream, on_delta)
+                except Exception as retry_exc:  # noqa: BLE001
+                    return _handle_groq_failure(retry_exc, tools or [])
             return _handle_groq_failure(exc, tools or [])
+
+
+def _is_tool_parse_failure(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "failed to parse tool call arguments as json" in message
 
 
 def _handle_groq_failure(exc: Exception, tools: list[Json]) -> LLMResponse:
